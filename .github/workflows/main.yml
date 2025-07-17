@@ -33,13 +33,11 @@ jobs:
         uses: goreleaser/goreleaser-action@v6
         with:
           distribution: goreleaser
-          version: latest
-          args: release --clean
+          version: v2.10.2
+          args: release -f .goreleaser-staging.yml --clean
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.SCW_STAGING_ACCESS_KEY }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.SCW_STAGING_SECRET_KEY }}
-          SCW_BUCKET_NAME: ${{ vars.SCW_STAGING_BUCKET_NAME }}
-          RELEASE_DISABLE: true
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4

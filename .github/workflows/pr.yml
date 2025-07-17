@@ -28,7 +28,7 @@ jobs:
         uses: goreleaser/goreleaser-action@v6
         with:
           distribution: goreleaser
-          version: latest
+          version: v2.10.2
           args: release --snapshot --clean
         env:
           RELEASE_DISABLE: true

@@ -20,9 +20,11 @@ archives:
 checksum:
   name_template: 'checksums.txt'
 release:
-  disable: "{{ .Env.RELEASE_DISABLE }}"
+  disable: true
 blobs:
   - provider: s3
     endpoint: "https://s3.fr-par.scw.cloud"
-    bucket: "{{ .Env.SCW_BUCKET_NAME }}"
+    bucket: "scw-staging-k8s-agent"
+    region: "fr-par"
     directory: "agent/{{ .Version }}"
+    acl: "public-read"

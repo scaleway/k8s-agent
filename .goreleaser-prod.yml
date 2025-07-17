@@ -1,0 +1,42 @@
+version: 2
+
+before:
+  hooks:
+    - go mod tidy
+builds:
+  - ldflags:
+      - "-s -w -extldflags '-static' -X main.Version={{ .Version }}"
+    targets:
+      - linux_amd64
+      - linux_arm64
+    env:
+      - CGO_ENABLED=0
+    flags:
+      - -trimpath
+    binary: '{{ .ProjectName }}_{{ .Os }}_{{ .Arch }}'
+archives:
+  - formats: ['binary']
+    name_template: '{{ .ProjectName }}_{{ .Os }}_{{ .Arch }}'
+checksum:
+  name_template: 'checksums.txt'
+release:
+  disable: false
+blobs:
+  - provider: s3
+    endpoint: "https://s3.fr-par.scw.cloud"
+    bucket: "scw-fr-par-k8s-agent"
+    directory: "agent/{{ .Version }}"
+    region: "fr-par"
+    acl: "public-read"
+  - provider: s3
+    endpoint: "https://s3.nl-ams.scw.cloud"
+    bucket: "scw-nl-ams-k8s-agent"
+    directory: "agent/{{ .Version }}"
+    region: "nl-ams"
+    acl: "public-read"
+  - provider: s3
+    endpoint: "https://s3.pl-waw.scw.cloud"
+    bucket: "scw-pl-waw-k8s-agent"
+    directory: "agent/{{ .Version }}"
+    region: "pl-waw"
+    acl: "public-read"
