@@ -1,0 +1,28 @@
+version: 2
+
+before:
+  hooks:
+    - go mod tidy
+builds:
+  - ldflags:
+      - "-s -w -extldflags '-static' -X main.Version={{ .Version }}"
+    targets:
+      - linux_amd64
+      - linux_arm64
+    env:
+      - CGO_ENABLED=0
+    flags:
+      - -trimpath
+    binary: '{{ .ProjectName }}_{{ .Os }}_{{ .Arch }}'
+archives:
+  - formats: ['binary']
+    name_template: '{{ .ProjectName }}_{{ .Os }}_{{ .Arch }}'
+checksum:
+  name_template: 'checksums.txt'
+release:
+  disable: "{{ .Env.RELEASE_DISABLE }}"
+blobs:
+  - provider: s3
+    endpoint: "https://s3.fr-par.scw.cloud"
+    bucket: "{{ .Env.SCW_BUCKET_NAME }}"
+    directory: "agent/{{ .Version }}"

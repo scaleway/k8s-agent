@@ -1,0 +1,48 @@
+name: Main
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    environment: staging
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: 1.24
+
+      - name: Run Golang CI Lint
+        uses: golangci/golangci-lint-action@v8
+        with:
+          args: --timeout=0
+
+      - name: Create fake tag for goreleaser
+        run: |
+          git tag v0.0.0-$(date +'%Y%m%d%H%M%S')-${{ github.sha }}
+
+      - name: Run GoReleaser
+        uses: goreleaser/goreleaser-action@v6
+        with:
+          distribution: goreleaser
+          version: latest
+          args: release --clean
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.SCW_STAGING_ACCESS_KEY }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.SCW_STAGING_SECRET_KEY }}
+          SCW_BUCKET_NAME: ${{ vars.SCW_STAGING_BUCKET_NAME }}
+          RELEASE_DISABLE: true
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          path: dist/k8s-agent_*
+          retention-days: 1
