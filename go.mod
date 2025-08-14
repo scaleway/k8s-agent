@@ -8,9 +8,9 @@ require (
 	github.com/Masterminds/sprig v2.22.0+incompatible
 	golang.org/x/time v0.12.0
 	gopkg.in/yaml.v3 v3.0.1
-	k8s.io/api v0.33.3
-	k8s.io/apimachinery v0.33.3
-	k8s.io/client-go v0.33.3
+	k8s.io/api v0.33.4
+	k8s.io/apimachinery v0.33.4
+	k8s.io/client-go v0.33.4
 	k8s.io/kubectl v0.33.3
 )
 
