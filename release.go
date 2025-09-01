@@ -8,7 +8,11 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// Structs to unmarshal releases.yam
+// Structs to unmarshal releases.yaml
+type Releases struct {
+	Versions map[string][]Component
+}
+
 type Component struct {
 	Name    string
 	Version string
@@ -18,7 +22,7 @@ type Component struct {
 // releaseComponents reads the releases.yaml file and returns the components for the given node version
 func releaseComponents(repoFS fs.FS, nodemetadata NodeMetadata) ([]Component, error) {
 	// Read and unmarshal "releases.yaml" file at the root of the repository
-	var releases map[string][]Component
+	var releases Releases
 	releasesFile, err := fs.ReadFile(repoFS, "releases.yaml")
 	if err != nil {
 		return nil, fmt.Errorf("failed to read releases file: %w", err)
@@ -29,7 +33,7 @@ func releaseComponents(repoFS fs.FS, nodemetadata NodeMetadata) ([]Component, er
 	}
 
 	// Get the release components for the node version
-	releaseComponents, ok := releases[nodemetadata.PoolVersion]
+	releaseComponents, ok := releases.Versions[nodemetadata.PoolVersion]
 	if !ok {
 		return nil, fmt.Errorf("release %s not found", nodemetadata.PoolVersion)
 	}

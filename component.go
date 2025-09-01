@@ -17,6 +17,10 @@ import (
 )
 
 // Structs to unmarshal metadata.yaml
+type ComponentVersions struct {
+	Versions map[string]ComponentSections
+}
+
 type ComponentSections struct {
 	Install   []ComponentResources `yaml:"install,omitempty"`
 	Uninstall []ComponentResources `yaml:"uninstall,omitempty"`
@@ -327,7 +331,7 @@ func componentMetada(repoFS fs.FS, name, version string) (ComponentSections, err
 	}
 
 	// Unmarshal the metadata file
-	var componentMetadata map[string]ComponentSections
+	var componentMetadata ComponentVersions
 	err = yaml.Unmarshal(componentMetadataFile, &componentMetadata)
 	if err != nil {
 		return ComponentSections{}, fmt.Errorf("failed to unmarshal component file: %w", err)
@@ -337,7 +341,7 @@ func componentMetada(repoFS fs.FS, name, version string) (ComponentSections, err
 	version = trimVersion(version)
 
 	// Get the metadata for the given version
-	componentMetadataVersion, ok := componentMetadata[version]
+	componentMetadataVersion, ok := componentMetadata.Versions[version]
 	if !ok {
 		return ComponentSections{}, fmt.Errorf("component version %s not found", version)
 	}
