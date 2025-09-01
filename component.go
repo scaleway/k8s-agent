@@ -17,6 +17,10 @@ import (
 )
 
 // Structs to unmarshal metadata.yaml
+type ComponentVersions struct {
+	Versions map[string]ComponentSections
+}
+
 type ComponentSections struct {
 	Install   []ComponentResources `yaml:"install,omitempty"`
 	Uninstall []ComponentResources `yaml:"uninstall,omitempty"`
@@ -108,14 +112,14 @@ func uninstallComponents(ctx context.Context, repoFS fs.FS, components []Compone
 		}
 
 		// Read component specific "metadata.yaml" file inside the component directory in root of the repository
-		componentSections, err := componentMetada(repoFS, component.Name, installedVersion)
+		componentSections, err := componentMetadata(repoFS, component.Name, installedVersion)
 		if err != nil {
 			return fmt.Errorf("failed to read component metadata: %w", err)
 		}
 
 		// Uninstall the component
 		slog.Info("Uninstall component", slog.String("component", component.Name), slog.String("version", installedVersion))
-		err = processComponentMetada(repoFS, component.Name, "uninstalled", componentSections.Uninstall, nodemetadata)
+		err = processComponentMetadata(repoFS, component.Name, "uninstalled", componentSections.Uninstall, nodemetadata)
 		if err != nil {
 			return fmt.Errorf("failed to uninstall component %s: %w", component.Name, err)
 		}
@@ -148,14 +152,14 @@ func installComponents(ctx context.Context, repoFS fs.FS, components []Component
 		}
 
 		// Read component specific "metadata.yaml" file inside the component directory in root of the repository
-		componentSections, err := componentMetada(repoFS, component.Name, expectedVersion)
+		componentSections, err := componentMetadata(repoFS, component.Name, expectedVersion)
 		if err != nil {
 			return fmt.Errorf("failed to read component metadata: %w", err)
 		}
 
 		// Install the component
 		slog.Info("Install component", slog.String("component", component.Name), slog.String("version", expectedVersion))
-		err = processComponentMetada(repoFS, component.Name, expectedVersion, componentSections.Install, nodemetadata)
+		err = processComponentMetadata(repoFS, component.Name, expectedVersion, componentSections.Install, nodemetadata)
 		if err != nil {
 			return fmt.Errorf("failed to install component %s: %w", component.Name, err)
 		}
@@ -287,8 +291,8 @@ func processComponentServices(services []ComponentService) error {
 	return nil
 }
 
-// processComponentMetada processes the files and services operations defined in the component metadata
-func processComponentMetada(repoFS fs.FS, name, version string, resources []ComponentResources, nodeMetadata NodeMetadata) error {
+// processComponentMetadata processes the files and services operations defined in the component metadata
+func processComponentMetadata(repoFS fs.FS, name, version string, resources []ComponentResources, nodeMetadata NodeMetadata) error {
 	for _, resource := range resources {
 		// Process files operations
 		err := processComponentFiles(repoFS, name, version, resource.Files, nodeMetadata)
@@ -319,7 +323,7 @@ func processComponentMetada(repoFS fs.FS, name, version string, resources []Comp
 }
 
 // releaseComponents returns the list of components for the given version
-func componentMetada(repoFS fs.FS, name, version string) (ComponentSections, error) {
+func componentMetadata(repoFS fs.FS, name, version string) (ComponentSections, error) {
 	// Read component specific "metadata.yaml" file inside the component directory in root of the repository
 	componentMetadataFile, err := fs.ReadFile(repoFS, name+"/metadata.yaml")
 	if err != nil {
@@ -327,7 +331,7 @@ func componentMetada(repoFS fs.FS, name, version string) (ComponentSections, err
 	}
 
 	// Unmarshal the metadata file
-	var componentMetadata map[string]ComponentSections
+	var componentMetadata ComponentVersions
 	err = yaml.Unmarshal(componentMetadataFile, &componentMetadata)
 	if err != nil {
 		return ComponentSections{}, fmt.Errorf("failed to unmarshal component file: %w", err)
@@ -337,7 +341,7 @@ func componentMetada(repoFS fs.FS, name, version string) (ComponentSections, err
 	version = trimVersion(version)
 
 	// Get the metadata for the given version
-	componentMetadataVersion, ok := componentMetadata[version]
+	componentMetadataVersion, ok := componentMetadata.Versions[version]
 	if !ok {
 		return ComponentSections{}, fmt.Errorf("component version %s not found", version)
 	}
