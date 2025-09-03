@@ -176,7 +176,7 @@ func registerKosmosNode(apiURL, poolID, poolRegion, secretKey string) (UserData,
 	}
 
 	// Write the registration response to the userdata cache, so the registration can be skipped next time
-	err = os.WriteFile(userdataCachePath, body, 0644)
+	err = os.WriteFile(userdataCachePath, body, 0600)
 	if err != nil {
 		return UserData{}, fmt.Errorf("failed to write Kosmos node userdata cache: %w", err)
 	}
