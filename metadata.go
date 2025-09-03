@@ -124,8 +124,8 @@ func registerKosmosNode(apiURL, poolID, poolRegion, secretKey string) (UserData,
 	userdataCachePath := "/etc/scw-k8s-userdata"
 
 	// If userdata cache file is present it means the node is already registered, so use it
-	userdataCache, err := os.ReadFile(userdataCachePath)
 	// If the userdata cache file is not found, it means the node is not registered, so ignore the error and continue with registration
+	userdataCache, err := os.ReadFile(userdataCachePath)
 	if err != nil && !errors.Is(err, fs.ErrNotExist) {
 		return UserData{}, fmt.Errorf("failed to read userdata cache: %w", err)
 	} else if err == nil {
