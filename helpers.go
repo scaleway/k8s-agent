@@ -10,7 +10,7 @@ import (
 	"strings"
 	"text/template"
 
-	"github.com/Masterminds/sprig"
+	"github.com/Masterminds/sprig/v3"
 )
 
 func writeFile(cacheFS fs.FS, name, src, dst, mode, owner, group string) (string, error) {
