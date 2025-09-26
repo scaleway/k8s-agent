@@ -31,8 +31,9 @@ type NodeMetadata struct {
 		Value  string `json:"value"`
 		Effect string `json:"effect"`
 	} `json:"node_taints"`
-	ProviderID     string `json:"provider_id"`
-	ResolvconfPath string `json:"resolvconf_path"`
+	ProviderID     string            `json:"provider_id"`
+	ResolvconfPath string            `json:"resolvconf_path"`
+	TemplateArgs   map[string]string `json:"template_args"`
 
 	RepoURI string `json:"repo_uri"`
 	Token   string // Token is not part of the metadata, it is get from the instance user-data

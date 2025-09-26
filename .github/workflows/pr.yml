@@ -29,6 +29,6 @@ jobs:
         with:
           distribution: goreleaser
           version: v2.10.2
-          args: release --snapshot --clean
+          args: release -f .goreleaser-staging.yml --snapshot --clean
         env:
           RELEASE_DISABLE: true
