@@ -21,15 +21,14 @@ type UserData struct {
 
 // NodeMetadata represents the metadata returned by the node metadata endpoint
 type NodeMetadata struct {
-	ID                       string            `json:"id"`
-	Name                     string            `json:"name"`
-	ClusterURL               string            `json:"cluster_url"`
-	ClusterCA                string            `json:"cluster_ca"`
-	CredentialProviderConfig string            `json:"credential_provider_config"`
-	PoolVersion              string            `json:"pool_version"`
-	KubeletConfig            string            `json:"kubelet_config"`
-	NodeLabels               map[string]string `json:"node_labels"`
-	NodeTaints               []struct {
+	ID            string            `json:"id"`
+	Name          string            `json:"name"`
+	ClusterURL    string            `json:"cluster_url"`
+	ClusterCA     string            `json:"cluster_ca"`
+	PoolVersion   string            `json:"pool_version"`
+	KubeletConfig string            `json:"kubelet_config"`
+	NodeLabels    map[string]string `json:"node_labels"`
+	NodeTaints    []struct {
 		Key    string `json:"key"`
 		Value  string `json:"value"`
 		Effect string `json:"effect"`
