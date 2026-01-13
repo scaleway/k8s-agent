@@ -15,10 +15,13 @@ var (
 )
 
 func main() {
-	// Flag to print the version
-	printVersion := flag.Bool("version", false, "Print the version")
+	// Flags
+	flagVersion := flag.Bool("version", false, "Print the version")
+	flagKosmos := flag.Bool("kosmos", false, "Enable Kosmos mode (multicloud): POOL_ID, POOL_REGION and SCW_SECRET_KEY env vars must be set")
 	flag.Parse()
-	if *printVersion {
+
+	// Flag to print the version
+	if *flagVersion {
 		fmt.Println(Version)
 		os.Exit(0)
 	}
@@ -29,15 +32,28 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Get node token to fetch the node metadata
-	nodeUserData, err := getNodeUserData()
-	if err != nil {
-		slog.Error("Failed to get credentials", slog.Any("error", err))
-		os.Exit(1)
+	// Get node token and url to fetch the node metadata
+	var userData UserData
+	if *flagKosmos {
+		// Kosmos mode: get userdata from env vars or local cache
+		kosmosUserData, err := getKosmosUserData()
+		if err != nil {
+			slog.Error("Failed to get Kosmos node credentials", slog.Any("error", err))
+			os.Exit(1)
+		}
+		userData = kosmosUserData
+	} else {
+		// Kapsule mode: get userdata from http://169.254.42.42/user_data/k8s
+		nodeUserData, err := getNodeUserData()
+		if err != nil {
+			slog.Error("Failed to get Kapsule node credentials", slog.Any("error", err))
+			os.Exit(1)
+		}
+		userData = nodeUserData
 	}
 
 	// Get the node metadata, from the PN node metadata endpoint or the external kapsule endpoint
-	nodeMetadata, err := getNodeMetadata(nodeUserData.MetadataURL, nodeUserData.NodeSecretKey)
+	nodeMetadata, err := getNodeMetadata(userData.MetadataURL, userData.NodeSecretKey)
 	if err != nil {
 		slog.Error("Failed to get node metadata", slog.Any("error", err))
 		os.Exit(1)
