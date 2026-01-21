@@ -40,3 +40,9 @@ blobs:
     directory: "agent/{{ .Version }}"
     region: "pl-waw"
     acl: "public-read"
+  - provider: s3
+    endpoint: "https://s3.it-mil.scw.cloud"
+    bucket: "scw-it-mil-k8s-agent"
+    directory: "agent/{{ .Version }}"
+    region: "it-mil"
+    acl: "public-read"
