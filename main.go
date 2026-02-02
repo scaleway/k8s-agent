@@ -78,6 +78,12 @@ func main() {
 
 	slog.Info("System and components processed successfully")
 
+	// If Kosmos mode, exit after installation
+	if *flagKosmos {
+		slog.Info("Kosmos mode: exiting after installation")
+		return
+	}
+
 	// Start the node controller
 	nodeController, err := NewController(ctx, nodeMetadata)
 	if err != nil {
