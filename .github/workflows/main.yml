@@ -30,7 +30,7 @@ jobs:
           git tag v0.0.0-$(date +'%Y%m%d%H%M%S')-${{ github.sha }}
 
       - name: Run GoReleaser
-        uses: goreleaser/goreleaser-action@v6
+        uses: goreleaser/goreleaser-action@v7
         with:
           distribution: goreleaser
           version: v2.10.2
