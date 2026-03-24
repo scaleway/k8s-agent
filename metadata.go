@@ -260,6 +260,7 @@ func createPrivilegedHTTPClient() (*http.Client, error) {
 
 	// Create a new HTTP client using the priviledged port
 	return &http.Client{
+		Timeout: 30 * time.Second,
 		Transport: &http.Transport{
 			DisableKeepAlives: true,
 			DialContext: (&net.Dialer{
