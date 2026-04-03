@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"io/fs"
 	"os"
@@ -8,7 +9,9 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"syscall"
 	"text/template"
+	"time"
 
 	"github.com/Masterminds/sprig/v3"
 )
@@ -30,9 +33,9 @@ func writeFile(cacheFS fs.FS, name, src, dst, mode, owner, group string) (string
 		dst = dst + filepath.Base(src)
 	}
 
-	dstFile, err := os.OpenFile(dst, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, os.FileMode(parsedMode))
+	dstFile, err := openDstFile(dst, os.FileMode(parsedMode))
 	if err != nil {
-		return "", fmt.Errorf("failed to open dst file: %w", err)
+		return "", err
 	}
 
 	_, err = dstFile.Write(srcFile)
@@ -81,9 +84,9 @@ func templateFile(cacheFS fs.FS, name, src, dst, mode, owner, group string, meta
 		dst = dst + filepath.Base(src)
 	}
 
-	dstFile, err := os.OpenFile(dst, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, os.FileMode(parsedMode))
+	dstFile, err := openDstFile(dst, os.FileMode(parsedMode))
 	if err != nil {
-		return "", fmt.Errorf("failed to open dst file: %w", err)
+		return "", err
 	}
 
 	_, err = dstFile.Write([]byte(rendered.String()))
@@ -102,6 +105,83 @@ func templateFile(cacheFS fs.FS, name, src, dst, mode, owner, group string, meta
 	}
 
 	return dst, nil
+}
+
+func openDstFile(dst string, mode os.FileMode) (*os.File, error) {
+	f, err := os.OpenFile(dst, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, mode)
+	if err == nil {
+		return f, nil
+	}
+	if !errors.Is(err, syscall.ETXTBSY) {
+		return nil, fmt.Errorf("failed to open dst file: %w", err)
+	}
+	if stopErr := stopProcessesUsingFile(dst); stopErr != nil {
+		return nil, fmt.Errorf("failed to open dst file: %w (could not stop blocking processes: %v)", err, stopErr)
+	}
+	f, err = os.OpenFile(dst, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, mode)
+	if err != nil {
+		return nil, fmt.Errorf("failed to open dst file: %w", err)
+	}
+	return f, nil
+}
+
+func stopProcessesUsingFile(path string) error {
+	pids, err := findProcessesUsingFile(path)
+	if err != nil {
+		return err
+	}
+	for _, pid := range pids {
+		syscall.Kill(pid, syscall.SIGTERM)
+	}
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		time.Sleep(200 * time.Millisecond)
+		alive := 0
+		for _, pid := range pids {
+			if syscall.Kill(pid, 0) == nil {
+				alive++
+			}
+		}
+		if alive == 0 {
+			return nil
+		}
+	}
+	for _, pid := range pids {
+		if syscall.Kill(pid, 0) == nil {
+			syscall.Kill(pid, syscall.SIGKILL)
+		}
+	}
+	time.Sleep(500 * time.Millisecond)
+	return nil
+}
+
+func findProcessesUsingFile(path string) ([]int, error) {
+	absPath, err := filepath.Abs(path)
+	if err != nil {
+		return nil, err
+	}
+	entries, err := os.ReadDir("/proc")
+	if err != nil {
+		return nil, err
+	}
+	var pids []int
+	for _, e := range entries {
+		if !e.IsDir() {
+			continue
+		}
+		pid, err := strconv.Atoi(e.Name())
+		if err != nil {
+			continue
+		}
+		exePath, err := os.Readlink(fmt.Sprintf("/proc/%d/exe", pid))
+		if err != nil {
+			continue
+		}
+		if exePath == absPath {
+			pids = append(pids, pid)
+		}
+	}
+	return pids, nil
 }
 
 func mkdir(path string, mode string, owner string, group string) error {
