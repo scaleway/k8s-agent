@@ -215,21 +215,21 @@ func (c *Controller) upgradeNode(ctx context.Context) error {
 	// Get node token to fetch the node metadata
 	nodeUserData, err := getNodeUserData()
 	if err != nil {
-		c.recorder.Eventf(node, corev1.EventTypeWarning, "NodeUpgrade", "Failed to get credentials: %w", err)
+		c.recorder.Eventf(node, corev1.EventTypeWarning, "NodeUpgrade", "Failed to get credentials: %s", err)
 		return fmt.Errorf("failed to get credentials: %w", err)
 	}
 
 	// Get the node metadata, from the PN node metadata endpoint or the external kapsule endpoint
 	nodeMetadata, err := getNodeMetadata(nodeUserData.MetadataURL, nodeUserData.NodeSecretKey)
 	if err != nil {
-		c.recorder.Eventf(node, corev1.EventTypeWarning, "NodeUpgrade", "Failed to get node metadata: %w", err)
+		c.recorder.Eventf(node, corev1.EventTypeWarning, "NodeUpgrade", "Failed to get node metadata: %s", err)
 		return fmt.Errorf("failed to get node metadata: %w", err)
 	}
 
 	// Install the components: binaries, configuration files, and services
 	err = processComponents(ctx, nodeMetadata)
 	if err != nil {
-		c.recorder.Eventf(node, corev1.EventTypeWarning, "NodeUpgrade", "Failed to install components: %w", err)
+		c.recorder.Eventf(node, corev1.EventTypeWarning, "NodeUpgrade", "Failed to install components: %s", err)
 		return fmt.Errorf("failed to install components: %w", err)
 	}
 
@@ -242,7 +242,7 @@ func (c *Controller) upgradeNode(ctx context.Context) error {
 	delete(nodeCopy.Annotations, "k8s.scaleway.com/agent")
 	_, err = c.client.CoreV1().Nodes().Update(ctx, nodeCopy, metav1.UpdateOptions{})
 	if err != nil {
-		c.recorder.Eventf(node, corev1.EventTypeWarning, "NodeUpgrade", "Failed to remove annotation: %w", err)
+		c.recorder.Eventf(node, corev1.EventTypeWarning, "NodeUpgrade", "Failed to remove annotation: %s", err)
 		return fmt.Errorf("failed to remove annotation from node %s: %w", c.nodeName, err)
 	}
 
