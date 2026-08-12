@@ -107,7 +107,7 @@ func uninstallComponents(ctx context.Context, repoFS fs.FS, components []Compone
 			return fmt.Errorf("failed to get component version: %w", err)
 		}
 		expectedVersion := expandVersion(component.Version, nodemetadata.PoolVersion)
-		if installedVersion == "" || installedVersion == expectedVersion {
+		if installedVersion == "" || installedVersion == "uninstalled" || installedVersion == expectedVersion {
 			continue
 		}
 
