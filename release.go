@@ -14,9 +14,10 @@ type Releases struct {
 }
 
 type Component struct {
-	Name    string
-	Version string
-	Tags    []string
+	Name      string
+	Version   string
+	Tags      []string
+	DependsOn []string `yaml:"depends_on,omitempty"`
 }
 
 // releaseComponents reads the releases.yaml file and returns the components for the given node version
@@ -38,6 +39,12 @@ func releaseComponents(repoFS fs.FS, nodemetadata NodeMetadata) ([]Component, er
 		return nil, fmt.Errorf("release %s not found", nodemetadata.PoolVersion)
 	}
 
+	// Validate the dependencies on the whole release
+	err = validateDependencies(releaseComponents)
+	if err != nil {
+		return nil, fmt.Errorf("invalid release %s: %w", nodemetadata.PoolVersion, err)
+	}
+
 	filteredComponents := []Component{}
 
 	// If no installer tags are specified, include all components
@@ -56,4 +63,24 @@ func releaseComponents(repoFS fs.FS, nodemetadata NodeMetadata) ([]Component, er
 	}
 
 	return filteredComponents, nil
+}
+
+// validateDependencies ensures each component is defined once and its dependencies are defined before it
+func validateDependencies(components []Component) error {
+	seen := make(map[string]bool, len(components))
+	for _, component := range components {
+		if seen[component.Name] {
+			return fmt.Errorf("component %s is defined twice", component.Name)
+		}
+
+		for _, dependency := range component.DependsOn {
+			if !seen[dependency] {
+				return fmt.Errorf("component %s depends on %s which must be defined before it", component.Name, dependency)
+			}
+		}
+
+		seen[component.Name] = true
+	}
+
+	return nil
 }
