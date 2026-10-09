@@ -58,9 +58,14 @@ func planComponents(repoFS fs.FS, components []Component, installed map[string]s
 			action.Reason = "dependency changed"
 		}
 
+		versions, err := componentVersions(repoFS, component.Name)
+		if err != nil {
+			return nil, fmt.Errorf("failed to read %s metadata: %w", component.Name, err)
+		}
+
 		// Uninstall
 		if isInstalled(action.InstalledVersion) {
-			sections, err := componentMetadata(repoFS, component.Name, action.InstalledVersion)
+			sections, err := versions.version(action.InstalledVersion)
 			if err != nil {
 				return nil, fmt.Errorf("failed to read %s metadata for installed version %s: %w", component.Name, action.InstalledVersion, err)
 			}
@@ -68,7 +73,7 @@ func planComponents(repoFS fs.FS, components []Component, installed map[string]s
 		}
 
 		// Install
-		sections, err := componentMetadata(repoFS, component.Name, action.ExpectedVersion)
+		sections, err := versions.version(action.ExpectedVersion)
 		if err != nil {
 			return nil, fmt.Errorf("failed to read %s metadata for expected version %s: %w", component.Name, action.ExpectedVersion, err)
 		}
