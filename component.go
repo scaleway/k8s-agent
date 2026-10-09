@@ -128,7 +128,7 @@ func uninstallComponents(ctx context.Context, repoFS fs.FS, actions []ComponentA
 
 		// Uninstall the component
 		slog.Info("Uninstall component", slog.String("component", action.Component.Name), slog.String("version", action.InstalledVersion), slog.String("reason", action.Reason))
-		err := processComponentMetadata(repoFS, action.Component.Name, "uninstalled", action.Uninstall, nodemetadata)
+		err := processComponentMetadata(repoFS, action.Component.Name, action.InstalledVersion, "uninstalled", action.Uninstall, nodemetadata)
 		if err != nil {
 			return fmt.Errorf("failed to uninstall component %s: %w", action.Component.Name, err)
 		}
@@ -149,7 +149,7 @@ func installComponents(ctx context.Context, repoFS fs.FS, actions []ComponentAct
 
 		// Install the component
 		slog.Info("Install component", slog.String("component", action.Component.Name), slog.String("version", action.ExpectedVersion), slog.String("reason", action.Reason))
-		err := processComponentMetadata(repoFS, action.Component.Name, action.ExpectedVersion, action.Install, nodemetadata)
+		err := processComponentMetadata(repoFS, action.Component.Name, action.ExpectedVersion, action.ExpectedVersion, action.Install, nodemetadata)
 		if err != nil {
 			return fmt.Errorf("failed to install component %s: %w", action.Component.Name, err)
 		}
@@ -282,8 +282,9 @@ func processComponentServices(services []ComponentService) error {
 	return nil
 }
 
-// processComponentMetadata processes the files and services operations defined in the component metadata
-func processComponentMetadata(repoFS fs.FS, name, version string, resources []ComponentResources, nodeMetadata NodeMetadata) error {
+// processComponentMetadata processes the files and services operations defined in the component metadata,
+// templating paths with version and storing recordedVersion as the component version once done
+func processComponentMetadata(repoFS fs.FS, name, version, recordedVersion string, resources []ComponentResources, nodeMetadata NodeMetadata) error {
 	for _, resource := range resources {
 		// Process files operations
 		err := processComponentFiles(repoFS, name, version, resource.Files, nodeMetadata)
@@ -305,7 +306,7 @@ func processComponentMetadata(repoFS fs.FS, name, version string, resources []Co
 	}
 
 	// Store the component version in the versions file
-	err := SetComponentVersion(name, version)
+	err := SetComponentVersion(name, recordedVersion)
 	if err != nil {
 		return fmt.Errorf("failed to store component version: %w", err)
 	}
