@@ -30,24 +30,9 @@ func writeFile(cacheFS fs.FS, name, src, dst, mode, owner, group string) (string
 		dst = dst + filepath.Base(src)
 	}
 
-	dstFile, err := os.OpenFile(dst, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, os.FileMode(parsedMode))
+	err = replaceFile(dst, srcFile, os.FileMode(parsedMode), owner, group)
 	if err != nil {
-		return "", fmt.Errorf("failed to open dst file: %w", err)
-	}
-
-	_, err = dstFile.Write(srcFile)
-	if err != nil {
-		return "", fmt.Errorf("failed to write file: %w", err)
-	}
-
-	err = dstFile.Close()
-	if err != nil {
-		return "", fmt.Errorf("failed to close dst file: %w", err)
-	}
-
-	err = chown(dst, owner, group)
-	if err != nil {
-		return "", fmt.Errorf("failed to chown file: %w", err)
+		return "", err
 	}
 
 	return dst, nil
@@ -81,27 +66,51 @@ func templateFile(cacheFS fs.FS, name, src, dst, mode, owner, group string, meta
 		dst = dst + filepath.Base(src)
 	}
 
-	dstFile, err := os.OpenFile(dst, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, os.FileMode(parsedMode))
+	err = replaceFile(dst, []byte(rendered.String()), os.FileMode(parsedMode), owner, group)
 	if err != nil {
-		return "", fmt.Errorf("failed to open dst file: %w", err)
-	}
-
-	_, err = dstFile.Write([]byte(rendered.String()))
-	if err != nil {
-		return "", fmt.Errorf("failed to write file: %w", err)
-	}
-
-	err = dstFile.Close()
-	if err != nil {
-		return "", fmt.Errorf("failed to close dst file: %w", err)
-	}
-
-	err = chown(dst, owner, group)
-	if err != nil {
-		return "", fmt.Errorf("failed to chown file: %w", err)
+		return "", err
 	}
 
 	return dst, nil
+}
+
+// replaceFile writes data to a temporary file next to dst and renames it over dst,
+// so a running binary is replaced instead of being truncated (which fails with "text file busy")
+func replaceFile(dst string, data []byte, mode os.FileMode, owner, group string) error {
+	tmpFile, err := os.CreateTemp(filepath.Dir(dst), "."+filepath.Base(dst)+".tmp-")
+	if err != nil {
+		return fmt.Errorf("failed to create temporary dst file: %w", err)
+	}
+	tmpPath := tmpFile.Name()
+	defer func() { _ = os.Remove(tmpPath) }() // No-op once renamed
+
+	_, err = tmpFile.Write(data)
+	if err != nil {
+		_ = tmpFile.Close()
+		return fmt.Errorf("failed to write file: %w", err)
+	}
+
+	err = tmpFile.Close()
+	if err != nil {
+		return fmt.Errorf("failed to close dst file: %w", err)
+	}
+
+	err = os.Chmod(tmpPath, mode)
+	if err != nil {
+		return fmt.Errorf("failed to chmod file: %w", err)
+	}
+
+	err = chown(tmpPath, owner, group)
+	if err != nil {
+		return fmt.Errorf("failed to chown file: %w", err)
+	}
+
+	err = os.Rename(tmpPath, dst)
+	if err != nil {
+		return fmt.Errorf("failed to replace dst file: %w", err)
+	}
+
+	return nil
 }
 
 func mkdir(path string, mode string, owner string, group string) error {
