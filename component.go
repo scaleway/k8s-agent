@@ -65,14 +65,34 @@ func processComponents(ctx context.Context, nodemetadata NodeMetadata) error {
 		return fmt.Errorf("failed to get release components: %w", err)
 	}
 
+	// Get the installed components versions
+	installed, err := ListComponentsVersions()
+	if err != nil {
+		return fmt.Errorf("failed to list components versions: %w", err)
+	}
+
+	// Get the components to reinstall
+	affected := affectedComponents(releaseComponents, installed, nodemetadata.PoolVersion)
+	for _, component := range releaseComponents {
+		if !slices.ContainsFunc(affected, func(c Component) bool { return c.Name == component.Name }) {
+			slog.Info("Component already installed", slog.String("component", component.Name), slog.String("version", installed[component.Name]))
+		}
+	}
+
+	// Create a plan to uninstall and install the affected components
+	actions, err := planComponents(repoFS, affected, installed, nodemetadata.PoolVersion)
+	if err != nil {
+		return fmt.Errorf("failed to plan components: %w", err)
+	}
+
 	// Uninstall components (components are uninstalled in reverse order)
-	err = uninstallComponents(ctx, repoFS, releaseComponents, nodemetadata)
+	err = uninstallComponents(ctx, repoFS, actions, nodemetadata)
 	if err != nil {
 		return fmt.Errorf("failed to uninstall components: %w", err)
 	}
 
 	// Install components
-	err = installComponents(ctx, repoFS, releaseComponents, nodemetadata)
+	err = installComponents(ctx, repoFS, actions, nodemetadata)
 	if err != nil {
 		return fmt.Errorf("failed to install components: %w", err)
 	}
@@ -86,14 +106,14 @@ func processComponents(ctx context.Context, nodemetadata NodeMetadata) error {
 	return nil
 }
 
-func uninstallComponents(ctx context.Context, repoFS fs.FS, components []Component, nodemetadata NodeMetadata) error {
-	// Copy and reverse component list to uninstall
-	reversedComponents := make([]Component, len(components))
-	copy(reversedComponents, components)
-	slices.Reverse(reversedComponents)
+func uninstallComponents(ctx context.Context, repoFS fs.FS, actions []ComponentAction, nodemetadata NodeMetadata) error {
+	// Copy and reverse actions list to uninstall
+	reversedActions := make([]ComponentAction, len(actions))
+	copy(reversedActions, actions)
+	slices.Reverse(reversedActions)
 
 	// Uninstall component one by one
-	for _, component := range reversedComponents {
+	for _, action := range reversedActions {
 		// Check context cancellation
 		select {
 		case <-ctx.Done():
@@ -101,36 +121,25 @@ func uninstallComponents(ctx context.Context, repoFS fs.FS, components []Compone
 		default:
 		}
 
-		// If the component is not installed or the version is the same, skip it
-		installedVersion, err := GetComponentVersion(component.Name)
-		if err != nil {
-			return fmt.Errorf("failed to get component version: %w", err)
-		}
-		expectedVersion := expandVersion(component.Version, nodemetadata.PoolVersion)
-		if installedVersion == "" || installedVersion == "uninstalled" || installedVersion == expectedVersion {
+		// If the component is not installed, skip it
+		if !isInstalled(action.InstalledVersion) {
 			continue
 		}
 
-		// Read component specific "metadata.yaml" file inside the component directory in root of the repository
-		componentSections, err := componentMetadata(repoFS, component.Name, installedVersion)
-		if err != nil {
-			return fmt.Errorf("failed to read component metadata: %w", err)
-		}
-
 		// Uninstall the component
-		slog.Info("Uninstall component", slog.String("component", component.Name), slog.String("version", installedVersion))
-		err = processComponentMetadata(repoFS, component.Name, "uninstalled", componentSections.Uninstall, nodemetadata)
+		slog.Info("Uninstall component", slog.String("component", action.Component.Name), slog.String("version", action.InstalledVersion), slog.String("reason", action.Reason))
+		err := processComponentMetadata(repoFS, action.Component.Name, action.InstalledVersion, "uninstalled", action.Uninstall, nodemetadata)
 		if err != nil {
-			return fmt.Errorf("failed to uninstall component %s: %w", component.Name, err)
+			return fmt.Errorf("failed to uninstall component %s: %w", action.Component.Name, err)
 		}
 	}
 
 	return nil
 }
 
-func installComponents(ctx context.Context, repoFS fs.FS, components []Component, nodemetadata NodeMetadata) error {
+func installComponents(ctx context.Context, repoFS fs.FS, actions []ComponentAction, nodemetadata NodeMetadata) error {
 	// Install component one by one
-	for _, component := range components {
+	for _, action := range actions {
 		// Check context cancellation
 		select {
 		case <-ctx.Done():
@@ -138,30 +147,11 @@ func installComponents(ctx context.Context, repoFS fs.FS, components []Component
 		default:
 		}
 
-		// Get current installed version of the component
-		installedVersion, err := GetComponentVersion(component.Name)
-		if err != nil {
-			return fmt.Errorf("failed to get component version: %w", err)
-		}
-		expectedVersion := expandVersion(component.Version, nodemetadata.PoolVersion)
-
-		// If the component is already installed and the version is the same, skip it
-		if installedVersion == expectedVersion {
-			slog.Info("Component already installed", slog.String("component", component.Name), slog.String("version", expectedVersion))
-			continue
-		}
-
-		// Read component specific "metadata.yaml" file inside the component directory in root of the repository
-		componentSections, err := componentMetadata(repoFS, component.Name, expectedVersion)
-		if err != nil {
-			return fmt.Errorf("failed to read component metadata: %w", err)
-		}
-
 		// Install the component
-		slog.Info("Install component", slog.String("component", component.Name), slog.String("version", expectedVersion))
-		err = processComponentMetadata(repoFS, component.Name, expectedVersion, componentSections.Install, nodemetadata)
+		slog.Info("Install component", slog.String("component", action.Component.Name), slog.String("version", action.ExpectedVersion), slog.String("reason", action.Reason))
+		err := processComponentMetadata(repoFS, action.Component.Name, action.ExpectedVersion, action.ExpectedVersion, action.Install, nodemetadata)
 		if err != nil {
-			return fmt.Errorf("failed to install component %s: %w", component.Name, err)
+			return fmt.Errorf("failed to install component %s: %w", action.Component.Name, err)
 		}
 	}
 
@@ -198,7 +188,7 @@ func processComponentFiles(repoFS fs.FS, name, version string, files []Component
 		case "directory":
 			// When type is dir, create the directory with the specified permissions
 			// if the directory already exists, the ownership and permissions are ensured
-			err := mkdir(file.Dst, file.Mode, file.Owner, file.Group)
+			err := mkdir(dst, file.Mode, file.Owner, file.Group)
 			if err != nil {
 				return fmt.Errorf("failed to make directory %s: %w", dst, err)
 			}
@@ -264,12 +254,13 @@ func processComponentServices(services []ComponentService) error {
 
 		switch service.State {
 		case "started":
-			cmd = exec.Command("/usr/bin/systemctl", "start", service.Name)
+			// Restart rather than start, so an already running service picks up the files just written
+			cmd = exec.Command("/usr/bin/systemctl", "restart", service.Name)
 			err = cmd.Run()
 			if err != nil {
-				return fmt.Errorf("failed to start service %s: %w", service.Name, err)
+				return fmt.Errorf("failed to restart service %s: %w", service.Name, err)
 			}
-			slog.Info("Service started", slog.String("service", service.Name))
+			slog.Info("Service restarted", slog.String("service", service.Name))
 		case "stopped":
 			cmd = exec.Command("/usr/bin/systemctl", "stop", service.Name)
 			err = cmd.Run()
@@ -291,8 +282,9 @@ func processComponentServices(services []ComponentService) error {
 	return nil
 }
 
-// processComponentMetadata processes the files and services operations defined in the component metadata
-func processComponentMetadata(repoFS fs.FS, name, version string, resources []ComponentResources, nodeMetadata NodeMetadata) error {
+// processComponentMetadata processes the files and services operations defined in the component metadata,
+// templating paths with version and storing recordedVersion as the component version once done
+func processComponentMetadata(repoFS fs.FS, name, version, recordedVersion string, resources []ComponentResources, nodeMetadata NodeMetadata) error {
 	for _, resource := range resources {
 		// Process files operations
 		err := processComponentFiles(repoFS, name, version, resource.Files, nodeMetadata)
@@ -314,7 +306,7 @@ func processComponentMetadata(repoFS fs.FS, name, version string, resources []Co
 	}
 
 	// Store the component version in the versions file
-	err := SetComponentVersion(name, version)
+	err := SetComponentVersion(name, recordedVersion)
 	if err != nil {
 		return fmt.Errorf("failed to store component version: %w", err)
 	}
@@ -322,26 +314,31 @@ func processComponentMetadata(repoFS fs.FS, name, version string, resources []Co
 	return nil
 }
 
-// releaseComponents returns the list of components for the given version
-func componentMetadata(repoFS fs.FS, name, version string) (ComponentSections, error) {
+// componentVersions reads and parses the metadata of every version of the given component
+func componentVersions(repoFS fs.FS, name string) (ComponentVersions, error) {
 	// Read component specific "metadata.yaml" file inside the component directory in root of the repository
 	componentMetadataFile, err := fs.ReadFile(repoFS, name+"/metadata.yaml")
 	if err != nil {
-		return ComponentSections{}, fmt.Errorf("failed to read component file: %w", err)
+		return ComponentVersions{}, fmt.Errorf("failed to read component file: %w", err)
 	}
 
 	// Unmarshal the metadata file
 	var componentMetadata ComponentVersions
 	err = yaml.Unmarshal(componentMetadataFile, &componentMetadata)
 	if err != nil {
-		return ComponentSections{}, fmt.Errorf("failed to unmarshal component file: %w", err)
+		return ComponentVersions{}, fmt.Errorf("failed to unmarshal component file: %w", err)
 	}
 
+	return componentMetadata, nil
+}
+
+// version returns the metadata sections for the given component version
+func (c ComponentVersions) version(version string) (ComponentSections, error) {
 	// Remove subversion suffix from the version
 	version = trimVersion(version)
 
 	// Get the metadata for the given version
-	componentMetadataVersion, ok := componentMetadata.Versions[version]
+	componentMetadataVersion, ok := c.Versions[version]
 	if !ok {
 		return ComponentSections{}, fmt.Errorf("component version %s not found", version)
 	}

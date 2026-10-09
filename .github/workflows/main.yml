@@ -25,6 +25,9 @@ jobs:
         with:
           args: --timeout=0
 
+      - name: Run tests
+        run: go test ./...
+
       - name: Create fake tag for goreleaser
         run: |
           git tag v0.0.0-$(date +'%Y%m%d%H%M%S')-${{ github.sha }}

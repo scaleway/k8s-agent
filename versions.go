@@ -15,7 +15,7 @@ import (
 //	   "component3": "0.3.5"
 //	}
 
-const versionsFile = "/etc/scw-k8s-versions.json"
+var versionsFile = "/etc/scw-k8s-versions.json"
 
 func SetComponentVersion(component string, version string) error {
 	versions := make(map[string]string)
@@ -47,41 +47,12 @@ func SetComponentVersion(component string, version string) error {
 	}
 
 	// Write the JSON back to the file
-	err = os.WriteFile(versionsFile, jsonVersions, 0644)
+	err = replaceFile(versionsFile, jsonVersions, 0644, "", "")
 	if err != nil {
 		return fmt.Errorf("failed to write versions file: %w", err)
 	}
 
 	return nil
-}
-
-func GetComponentVersion(component string) (string, error) {
-	versions := make(map[string]string)
-
-	// Check if versions file exists
-	if info, err := os.Stat(versionsFile); err == nil && !info.IsDir() {
-		// File exists: read and unmarshal its content
-		jsonVersions, err := os.ReadFile(versionsFile)
-		if err != nil {
-			return "", fmt.Errorf("failed to read versions file: %w", err)
-		}
-
-		err = json.Unmarshal(jsonVersions, &versions)
-		if err != nil {
-			return "", fmt.Errorf("failed to unmarshal versions file: %w", err)
-		}
-	} else if err != nil && !os.IsNotExist(err) {
-		// An error occurred while checking the file (other than it not existing)
-		return "", fmt.Errorf("failed to stat versions file: %w", err)
-	}
-
-	// Get component version
-	version, ok := versions[component]
-	if !ok {
-		return "", nil
-	}
-
-	return version, nil
 }
 
 func ListComponentsVersions() (map[string]string, error) {
