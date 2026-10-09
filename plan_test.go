@@ -236,13 +236,13 @@ func TestPlanComponents(t *testing.T) {
 			name:       "not installed",
 			repoFS:     testRepoFS("1.5.2"),
 			installed:  map[string]string{},
-			wantReason: "version changed",
+			wantReason: "not installed",
 		},
 		{
 			name:       "previously uninstalled",
 			repoFS:     testRepoFS("1.5.2"),
 			installed:  map[string]string{"runc": "uninstalled"},
-			wantReason: "version changed",
+			wantReason: "not installed",
 		},
 		{
 			name:      "installed version missing from metadata",
