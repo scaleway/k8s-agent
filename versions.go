@@ -15,7 +15,7 @@ import (
 //	   "component3": "0.3.5"
 //	}
 
-const versionsFile = "/etc/scw-k8s-versions.json"
+var versionsFile = "/etc/scw-k8s-versions.json"
 
 func SetComponentVersion(component string, version string) error {
 	versions := make(map[string]string)
@@ -47,7 +47,7 @@ func SetComponentVersion(component string, version string) error {
 	}
 
 	// Write the JSON back to the file
-	err = os.WriteFile(versionsFile, jsonVersions, 0644)
+	err = replaceFile(versionsFile, jsonVersions, 0644, "", "")
 	if err != nil {
 		return fmt.Errorf("failed to write versions file: %w", err)
 	}

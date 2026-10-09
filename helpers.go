@@ -76,6 +76,7 @@ func templateFile(cacheFS fs.FS, name, src, dst, mode, owner, group string, meta
 
 // replaceFile writes data to a temporary file next to dst and renames it over dst,
 // so a running binary is replaced instead of being truncated (which fails with "text file busy")
+// and dst is never left partially written. Empty owner and group keep the current user.
 func replaceFile(dst string, data []byte, mode os.FileMode, owner, group string) error {
 	tmpFile, err := os.CreateTemp(filepath.Dir(dst), "."+filepath.Base(dst)+".tmp-")
 	if err != nil {
@@ -100,9 +101,11 @@ func replaceFile(dst string, data []byte, mode os.FileMode, owner, group string)
 		return fmt.Errorf("failed to chmod file: %w", err)
 	}
 
-	err = chown(tmpPath, owner, group)
-	if err != nil {
-		return fmt.Errorf("failed to chown file: %w", err)
+	if owner != "" || group != "" {
+		err = chown(tmpPath, owner, group)
+		if err != nil {
+			return fmt.Errorf("failed to chown file: %w", err)
+		}
 	}
 
 	err = os.Rename(tmpPath, dst)
