@@ -314,26 +314,31 @@ func processComponentMetadata(repoFS fs.FS, name, version, recordedVersion strin
 	return nil
 }
 
-// releaseComponents returns the list of components for the given version
-func componentMetadata(repoFS fs.FS, name, version string) (ComponentSections, error) {
+// componentVersions reads and parses the metadata of every version of the given component
+func componentVersions(repoFS fs.FS, name string) (ComponentVersions, error) {
 	// Read component specific "metadata.yaml" file inside the component directory in root of the repository
 	componentMetadataFile, err := fs.ReadFile(repoFS, name+"/metadata.yaml")
 	if err != nil {
-		return ComponentSections{}, fmt.Errorf("failed to read component file: %w", err)
+		return ComponentVersions{}, fmt.Errorf("failed to read component file: %w", err)
 	}
 
 	// Unmarshal the metadata file
 	var componentMetadata ComponentVersions
 	err = yaml.Unmarshal(componentMetadataFile, &componentMetadata)
 	if err != nil {
-		return ComponentSections{}, fmt.Errorf("failed to unmarshal component file: %w", err)
+		return ComponentVersions{}, fmt.Errorf("failed to unmarshal component file: %w", err)
 	}
 
+	return componentMetadata, nil
+}
+
+// version returns the metadata sections for the given component version
+func (c ComponentVersions) version(version string) (ComponentSections, error) {
 	// Remove subversion suffix from the version
 	version = trimVersion(version)
 
 	// Get the metadata for the given version
-	componentMetadataVersion, ok := componentMetadata.Versions[version]
+	componentMetadataVersion, ok := c.Versions[version]
 	if !ok {
 		return ComponentSections{}, fmt.Errorf("component version %s not found", version)
 	}
