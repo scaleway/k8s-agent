@@ -52,7 +52,9 @@ func planComponents(repoFS fs.FS, components []Component, installed map[string]s
 			ExpectedVersion:  expandVersion(component.Version, poolVersion),
 			Reason:           "version changed",
 		}
-		if action.InstalledVersion == action.ExpectedVersion {
+		if !isInstalled(action.InstalledVersion) {
+			action.Reason = "not installed"
+		} else if action.InstalledVersion == action.ExpectedVersion {
 			action.Reason = "dependency changed"
 		}
 
