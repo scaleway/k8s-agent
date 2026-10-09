@@ -254,12 +254,13 @@ func processComponentServices(services []ComponentService) error {
 
 		switch service.State {
 		case "started":
-			cmd = exec.Command("/usr/bin/systemctl", "start", service.Name)
+			// Restart rather than start, so an already running service picks up the files just written
+			cmd = exec.Command("/usr/bin/systemctl", "restart", service.Name)
 			err = cmd.Run()
 			if err != nil {
-				return fmt.Errorf("failed to start service %s: %w", service.Name, err)
+				return fmt.Errorf("failed to restart service %s: %w", service.Name, err)
 			}
-			slog.Info("Service started", slog.String("service", service.Name))
+			slog.Info("Service restarted", slog.String("service", service.Name))
 		case "stopped":
 			cmd = exec.Command("/usr/bin/systemctl", "stop", service.Name)
 			err = cmd.Run()
