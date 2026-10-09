@@ -39,8 +39,8 @@ func releaseComponents(repoFS fs.FS, nodemetadata NodeMetadata) ([]Component, er
 		return nil, fmt.Errorf("release %s not found", nodemetadata.PoolVersion)
 	}
 
-	// Validate the dependencies on the whole release
-	err = validateDependencies(releaseComponents)
+	// Validate and sort the dependencies on the whole release
+	releaseComponents, err = sortDependencies(releaseComponents)
 	if err != nil {
 		return nil, fmt.Errorf("invalid release %s: %w", nodemetadata.PoolVersion, err)
 	}
@@ -65,22 +65,49 @@ func releaseComponents(repoFS fs.FS, nodemetadata NodeMetadata) ([]Component, er
 	return filteredComponents, nil
 }
 
-// validateDependencies ensures each component is defined once and its dependencies are defined before it
-func validateDependencies(components []Component) error {
-	seen := make(map[string]bool, len(components))
+// sortDependencies orders components so that each one comes after its dependencies, keeping the release order otherwise.
+// It fails if a component is defined twice, depends on an unknown component or is part of a dependency cycle.
+func sortDependencies(components []Component) ([]Component, error) {
+	defined := make(map[string]bool, len(components))
 	for _, component := range components {
-		if seen[component.Name] {
-			return fmt.Errorf("component %s is defined twice", component.Name)
+		if defined[component.Name] {
+			return nil, fmt.Errorf("component %s is defined twice", component.Name)
 		}
-
+		defined[component.Name] = true
+	}
+	for _, component := range components {
 		for _, dependency := range component.DependsOn {
-			if !seen[dependency] {
-				return fmt.Errorf("component %s depends on %s which must be defined before it", component.Name, dependency)
+			if !defined[dependency] {
+				return nil, fmt.Errorf("component %s depends on %s which is not defined", component.Name, dependency)
 			}
 		}
-
-		seen[component.Name] = true
 	}
 
-	return nil
+	// Repeatedly pick the first remaining component whose dependencies are all sorted
+	sorted := make([]Component, 0, len(components))
+	placed := make(map[string]bool, len(components))
+	remaining := slices.Clone(components)
+	for len(remaining) > 0 {
+		index := slices.IndexFunc(remaining, func(component Component) bool {
+			return !slices.ContainsFunc(component.DependsOn, func(dependency string) bool { return !placed[dependency] })
+		})
+		if index == -1 {
+			return nil, fmt.Errorf("dependency cycle between components %v", componentNames(remaining))
+		}
+
+		sorted = append(sorted, remaining[index])
+		placed[remaining[index].Name] = true
+		remaining = slices.Delete(remaining, index, index+1)
+	}
+
+	return sorted, nil
+}
+
+// componentNames returns the names of the given components
+func componentNames(components []Component) []string {
+	names := make([]string, 0, len(components))
+	for _, component := range components {
+		names = append(names, component.Name)
+	}
+	return names
 }

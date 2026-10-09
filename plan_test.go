@@ -29,27 +29,39 @@ func testInstalled(overrides map[string]string) map[string]string {
 	return installed
 }
 
-func componentNames(components []Component) []string {
-	names := []string{}
-	for _, component := range components {
-		names = append(names, component.Name)
-	}
-	return names
-}
-
-func TestValidateDependencies(t *testing.T) {
+func TestSortDependencies(t *testing.T) {
 	tests := []struct {
 		name       string
 		components []Component
 		wantErr    bool
+		expected   []string
 	}{
 		{
-			name:       "valid chain",
+			name:       "already sorted",
 			components: testRelease,
+			expected:   []string{"cni-plugins", "runc", "crictl", "containerd", "kubelet"},
 		},
 		{
-			name:       "no dependencies",
+			name:       "no dependencies keeps release order",
 			components: []Component{{Name: "runc"}, {Name: "containerd"}},
+			expected:   []string{"runc", "containerd"},
+		},
+		{
+			name:       "dependency defined after",
+			components: []Component{{Name: "containerd", DependsOn: []string{"runc"}}, {Name: "runc"}},
+			expected:   []string{"runc", "containerd"},
+		},
+		{
+			name: "release order",
+			components: []Component{
+				{Name: "cni-plugins"},
+				{Name: "runc"},
+				{Name: "containerd", DependsOn: []string{"cni-plugins", "runc", "crictl"}},
+				{Name: "kubelet", DependsOn: []string{"containerd"}},
+				{Name: "crictl"},
+				{Name: "other"},
+			},
+			expected: []string{"cni-plugins", "runc", "crictl", "containerd", "kubelet", "other"},
 		},
 		{
 			name:       "unknown dependency",
@@ -57,14 +69,18 @@ func TestValidateDependencies(t *testing.T) {
 			wantErr:    true,
 		},
 		{
-			name:       "dependency defined after",
-			components: []Component{{Name: "containerd", DependsOn: []string{"runc"}}, {Name: "runc"}},
-			wantErr:    true,
-		},
-		{
 			name:       "self dependency",
 			components: []Component{{Name: "runc", DependsOn: []string{"runc"}}},
 			wantErr:    true,
+		},
+		{
+			name: "dependency cycle",
+			components: []Component{
+				{Name: "runc"},
+				{Name: "containerd", DependsOn: []string{"kubelet"}},
+				{Name: "kubelet", DependsOn: []string{"containerd"}},
+			},
+			wantErr: true,
 		},
 		{
 			name:       "duplicate component",
@@ -75,9 +91,16 @@ func TestValidateDependencies(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err := validateDependencies(tt.components)
+			sorted, err := sortDependencies(tt.components)
 			if (err != nil) != tt.wantErr {
-				t.Errorf("validateDependencies() error = %v, wantErr %v", err, tt.wantErr)
+				t.Fatalf("sortDependencies() error = %v, wantErr %v", err, tt.wantErr)
+			}
+			if tt.wantErr {
+				return
+			}
+
+			if names := componentNames(sorted); !slices.Equal(names, tt.expected) {
+				t.Errorf("sortDependencies() = %v, expected %v", names, tt.expected)
 			}
 		})
 	}
@@ -299,7 +322,7 @@ func TestReleaseComponents(t *testing.T) {
 			},
 		},
 		{
-			name: "invalid dependency",
+			name: "dependency defined after",
 			releases: `versions:
   1.37.1:
     - name: containerd
@@ -307,6 +330,19 @@ func TestReleaseComponents(t *testing.T) {
       depends_on: [runc]
     - name: runc
       version: "1.5.2"
+`,
+			expected: []Component{
+				{Name: "runc", Version: "1.5.2"},
+				{Name: "containerd", Version: "2.3.6", DependsOn: []string{"runc"}},
+			},
+		},
+		{
+			name: "invalid dependency",
+			releases: `versions:
+  1.37.1:
+    - name: containerd
+      version: "2.3.6"
+      depends_on: [runc]
 `,
 			wantErr: true,
 		},
