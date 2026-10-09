@@ -188,7 +188,7 @@ func processComponentFiles(repoFS fs.FS, name, version string, files []Component
 		case "directory":
 			// When type is dir, create the directory with the specified permissions
 			// if the directory already exists, the ownership and permissions are ensured
-			err := mkdir(file.Dst, file.Mode, file.Owner, file.Group)
+			err := mkdir(dst, file.Mode, file.Owner, file.Group)
 			if err != nil {
 				return fmt.Errorf("failed to make directory %s: %w", dst, err)
 			}
