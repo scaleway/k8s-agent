@@ -1,10 +1,12 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"io/fs"
 	"slices"
 
+	"github.com/heimdalr/dag"
 	"gopkg.in/yaml.v3"
 )
 
@@ -14,9 +16,10 @@ type Releases struct {
 }
 
 type Component struct {
-	Name    string
-	Version string
-	Tags    []string
+	Name      string
+	Version   string
+	Tags      []string
+	DependsOn []string `yaml:"depends_on,omitempty"`
 }
 
 // releaseComponents reads the releases.yaml file and returns the components for the given node version
@@ -38,6 +41,12 @@ func releaseComponents(repoFS fs.FS, nodemetadata NodeMetadata) ([]Component, er
 		return nil, fmt.Errorf("release %s not found", nodemetadata.PoolVersion)
 	}
 
+	// Validate and sort the dependencies on the whole release
+	releaseComponents, err = sortDependencies(releaseComponents)
+	if err != nil {
+		return nil, fmt.Errorf("invalid release %s: %w", nodemetadata.PoolVersion, err)
+	}
+
 	filteredComponents := []Component{}
 
 	// If no installer tags are specified, include all components
@@ -56,4 +65,67 @@ func releaseComponents(repoFS fs.FS, nodemetadata NodeMetadata) ([]Component, er
 	}
 
 	return filteredComponents, nil
+}
+
+// componentsGraph returns the dependency graph of the components, with an edge from each dependency to its dependents.
+// It fails if a component is defined twice, depends on an unknown component or is part of a dependency cycle.
+func componentsGraph(components []Component) (*dag.DAG, error) {
+	graph := dag.NewDAG()
+	for _, component := range components {
+		err := graph.AddVertexByID(component.Name, component.Name)
+		if err != nil {
+			return nil, fmt.Errorf("invalid component %s: %w", component.Name, err)
+		}
+	}
+
+	for _, component := range components {
+		for _, dependency := range component.DependsOn {
+			err := graph.AddEdge(dependency, component.Name)
+			if err != nil && !errors.As(err, &dag.EdgeDuplicateError{}) {
+				return nil, fmt.Errorf("invalid dependency %s of component %s: %w", dependency, component.Name, err)
+			}
+		}
+	}
+
+	return graph, nil
+}
+
+// sortDependencies orders components so that each one comes after its dependencies, keeping the release order otherwise
+// (dag.OrderedWalk would order independent components by name instead)
+func sortDependencies(components []Component) ([]Component, error) {
+	graph, err := componentsGraph(components)
+	if err != nil {
+		return nil, err
+	}
+
+	// Repeatedly pick the first remaining component without pending dependencies, then remove it from the graph
+	sorted := make([]Component, 0, len(components))
+	remaining := slices.Clone(components)
+	for len(remaining) > 0 {
+		index := slices.IndexFunc(remaining, func(component Component) bool {
+			isRoot, err := graph.IsRoot(component.Name)
+			return err == nil && isRoot
+		})
+		if index == -1 {
+			return nil, fmt.Errorf("no component without pending dependencies in %v", componentNames(remaining))
+		}
+
+		err = graph.DeleteVertex(remaining[index].Name)
+		if err != nil {
+			return nil, fmt.Errorf("failed to remove component %s from graph: %w", remaining[index].Name, err)
+		}
+		sorted = append(sorted, remaining[index])
+		remaining = slices.Delete(remaining, index, index+1)
+	}
+
+	return sorted, nil
+}
+
+// componentNames returns the names of the given components
+func componentNames(components []Component) []string {
+	names := make([]string, 0, len(components))
+	for _, component := range components {
+		names = append(names, component.Name)
+	}
+	return names
 }
