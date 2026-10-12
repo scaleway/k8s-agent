@@ -90,35 +90,35 @@ func componentsGraph(components []Component) (*dag.DAG, error) {
 	return graph, nil
 }
 
-// sortDependencies orders components so that each one comes after its dependencies, keeping the release order otherwise
-// (dag.OrderedWalk would order independent components by name instead)
+// componentsVisitor collects the visited components in visit order
+type componentsVisitor struct {
+	components map[string]Component
+	sorted     []Component
+}
+
+func (v *componentsVisitor) Visit(vertex dag.Vertexer) {
+	id, _ := vertex.Vertex()
+	v.sorted = append(v.sorted, v.components[id])
+}
+
+// sortDependencies orders components so that each one comes after its dependencies,
+// independent components are ordered by name
 func sortDependencies(components []Component) ([]Component, error) {
 	graph, err := componentsGraph(components)
 	if err != nil {
 		return nil, err
 	}
 
-	// Repeatedly pick the first remaining component without pending dependencies, then remove it from the graph
-	sorted := make([]Component, 0, len(components))
-	remaining := slices.Clone(components)
-	for len(remaining) > 0 {
-		index := slices.IndexFunc(remaining, func(component Component) bool {
-			isRoot, err := graph.IsRoot(component.Name)
-			return err == nil && isRoot
-		})
-		if index == -1 {
-			return nil, fmt.Errorf("no component without pending dependencies in %v", componentNames(remaining))
-		}
-
-		err = graph.DeleteVertex(remaining[index].Name)
-		if err != nil {
-			return nil, fmt.Errorf("failed to remove component %s from graph: %w", remaining[index].Name, err)
-		}
-		sorted = append(sorted, remaining[index])
-		remaining = slices.Delete(remaining, index, index+1)
+	visitor := &componentsVisitor{
+		components: make(map[string]Component, len(components)),
+		sorted:     make([]Component, 0, len(components)),
 	}
+	for _, component := range components {
+		visitor.components[component.Name] = component
+	}
+	graph.OrderedWalk(visitor)
 
-	return sorted, nil
+	return visitor.sorted, nil
 }
 
 // componentNames returns the names of the given components
