@@ -24,6 +24,9 @@ jobs:
         with:
           args: --timeout=0
 
+      - name: Run tests
+        run: go test ./...
+
       - name: Run GoReleaser
         uses: goreleaser/goreleaser-action@v7
         with:
