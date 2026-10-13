@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io/fs"
 	"slices"
+	"strings"
 
 	"gopkg.in/yaml.v3"
 )
@@ -67,53 +68,39 @@ func releaseComponents(repoFS fs.FS, nodemetadata NodeMetadata) ([]Component, er
 // sortDependencies orders components so that each one comes after its dependencies, keeping the release order otherwise.
 // It fails if a component is defined twice, depends on an unknown component or is part of a dependency cycle.
 func sortDependencies(components []Component) ([]Component, error) {
-	index := make(map[string]int, len(components))
-	for i, component := range components {
-		if _, ok := index[component.Name]; ok {
+	names := make(map[string]bool, len(components))
+	for _, component := range components {
+		if names[component.Name] {
 			return nil, fmt.Errorf("component %s is defined twice", component.Name)
 		}
-		index[component.Name] = i
+		names[component.Name] = true
+	}
+	for _, component := range components {
+		for _, dependency := range component.DependsOn {
+			if !names[dependency] {
+				return nil, fmt.Errorf("component %s depends on unknown component %s", component.Name, dependency)
+			}
+		}
 	}
 
 	sorted := make([]Component, 0, len(components))
 	done := make(map[string]bool, len(components))
-	visiting := make(map[string]bool)
-
-	var visit func(name string) error
-	visit = func(name string) error {
-		if done[name] {
-			return nil
-		}
-		if visiting[name] {
-			return fmt.Errorf("component %s is part of a dependency cycle", name)
-		}
-		visiting[name] = true
-
-		component := components[index[name]]
-		for _, dependency := range component.DependsOn {
-			if _, ok := index[dependency]; !ok {
-				return fmt.Errorf("component %s depends on unknown component %s", name, dependency)
+	for len(sorted) < len(components) {
+		// Pick the first component in release order whose dependencies are all sorted
+		next := slices.IndexFunc(components, func(component Component) bool {
+			return !done[component.Name] && !slices.ContainsFunc(component.DependsOn, func(dependency string) bool { return !done[dependency] })
+		})
+		if next == -1 {
+			remaining := []string{}
+			for _, component := range components {
+				if !done[component.Name] {
+					remaining = append(remaining, component.Name)
+				}
 			}
+			return nil, fmt.Errorf("components %s are part of or depend on a dependency cycle", strings.Join(remaining, ", "))
 		}
-
-		// Visit dependencies in release order
-		dependencies := slices.Clone(component.DependsOn)
-		slices.SortFunc(dependencies, func(a, b string) int { return index[a] - index[b] })
-		for _, dependency := range dependencies {
-			if err := visit(dependency); err != nil {
-				return err
-			}
-		}
-
-		done[name] = true
-		sorted = append(sorted, component)
-		return nil
-	}
-
-	for _, component := range components {
-		if err := visit(component.Name); err != nil {
-			return nil, err
-		}
+		done[components[next].Name] = true
+		sorted = append(sorted, components[next])
 	}
 
 	return sorted, nil

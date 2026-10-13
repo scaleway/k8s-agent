@@ -78,6 +78,11 @@ func TestSortDependencies(t *testing.T) {
 			expected:   []string{"a", "b", "c"},
 		},
 		{
+			name:       "dependency does not move ahead of independent components",
+			components: []Component{{Name: "a", DependsOn: []string{"c"}}, {Name: "b"}, {Name: "c"}},
+			expected:   []string{"b", "c", "a"},
+		},
+		{
 			name:       "dependency listed twice",
 			components: []Component{{Name: "runc"}, {Name: "containerd", DependsOn: []string{"runc", "runc"}}},
 			expected:   []string{"runc", "containerd"},
