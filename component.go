@@ -102,13 +102,8 @@ func processComponents(ctx context.Context, nodemetadata NodeMetadata) error {
 }
 
 func uninstallComponents(ctx context.Context, repoFS fs.FS, actions []ComponentAction, nodemetadata NodeMetadata) error {
-	// Copy and reverse actions list to uninstall
-	reversedActions := make([]ComponentAction, len(actions))
-	copy(reversedActions, actions)
-	slices.Reverse(reversedActions)
-
-	// Uninstall component one by one
-	for _, action := range reversedActions {
+	// Uninstall component one by one, in reverse install order
+	for _, action := range slices.Backward(actions) {
 		// Check context cancellation
 		select {
 		case <-ctx.Done():

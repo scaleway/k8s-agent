@@ -112,8 +112,7 @@ func (v *componentsVisitor) Visit(vertex dag.Vertexer) {
 	v.sorted = append(v.sorted, *component.(*Component))
 }
 
-// sortDependencies orders components so that each one comes after its dependencies,
-// independent components are ordered by name.
+// sortDependencies orders components so that each one comes after its dependencies.
 // Each component dependencies are resolved to all its direct and indirect ones, in install order.
 func sortDependencies(components []Component) ([]Component, error) {
 	graph, err := componentsGraph(components)
