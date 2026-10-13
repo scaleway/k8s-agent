@@ -29,17 +29,12 @@ func isInstalled(installedVersion string) bool {
 // and every component depending on them, directly or through another affected component.
 // Components must be in install order, as sorted by releaseComponents.
 func affectedComponents(components []Component, installed map[string]string, poolVersion string) []ComponentAction {
-	expected := make(map[string]string, len(components))
-	changed := make(map[string]bool, len(components))
-	for _, component := range components {
-		expected[component.Name] = expandVersion(component.Version, poolVersion)
-		changed[component.Name] = installed[component.Name] != expected[component.Name]
-	}
-
 	actions := make([]ComponentAction, 0, len(components))
 	affected := make(map[string]bool, len(components))
 	for _, component := range components {
-		if !changed[component.Name] && !slices.ContainsFunc(component.DependsOn, func(dependency string) bool { return affected[dependency] }) {
+		expected := expandVersion(component.Version, poolVersion)
+		changed := installed[component.Name] != expected
+		if !changed && !slices.ContainsFunc(component.DependsOn, func(dependency string) bool { return affected[dependency] }) {
 			slog.Info("Component already installed", slog.String("component", component.Name), slog.String("version", installed[component.Name]))
 			continue
 		}
@@ -48,12 +43,12 @@ func affectedComponents(components []Component, installed map[string]string, poo
 		action := ComponentAction{
 			Name:             component.Name,
 			InstalledVersion: installed[component.Name],
-			ExpectedVersion:  expected[component.Name],
+			ExpectedVersion:  expected,
 			Reason:           "dependency changed",
 		}
 		if !isInstalled(action.InstalledVersion) {
 			action.Reason = "not installed"
-		} else if changed[component.Name] {
+		} else if changed {
 			action.Reason = "version changed"
 		}
 		actions = append(actions, action)
