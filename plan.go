@@ -17,9 +17,12 @@ type ComponentAction struct {
 	Install          []ComponentResources
 }
 
+// uninstalledVersion is the version stored for a component once uninstalled
+const uninstalledVersion = "uninstalled"
+
 // isInstalled returns true if the given installed version must be uninstalled before a reinstall
 func isInstalled(installedVersion string) bool {
-	return installedVersion != "" && installedVersion != "uninstalled"
+	return installedVersion != "" && installedVersion != uninstalledVersion
 }
 
 // affectedComponents returns in install order an action, without recipes, for components whose installed version differs from the expected one
