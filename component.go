@@ -72,10 +72,7 @@ func processComponents(ctx context.Context, nodemetadata NodeMetadata) error {
 	}
 
 	// Get the components to reinstall
-	affected, err := affectedComponents(releaseComponents, installed, nodemetadata.PoolVersion)
-	if err != nil {
-		return fmt.Errorf("failed to get affected components: %w", err)
-	}
+	affected := affectedComponents(releaseComponents, installed, nodemetadata.PoolVersion)
 	for _, component := range releaseComponents {
 		if !slices.ContainsFunc(affected, func(c Component) bool { return c.Name == component.Name }) {
 			slog.Info("Component already installed", slog.String("component", component.Name), slog.String("version", installed[component.Name]))

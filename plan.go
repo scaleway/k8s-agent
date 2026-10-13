@@ -21,43 +21,19 @@ func isInstalled(installedVersion string) bool {
 	return installedVersion != "" && installedVersion != "uninstalled"
 }
 
-// affectedComponents returns in install order components whose installed version differs from the expected one and every component depending on them
-func affectedComponents(components []Component, installed map[string]string, poolVersion string) ([]Component, error) {
-	// Ignore dependencies filtered out by installer tags
-	names := componentNames(components)
-	graphComponents := make([]Component, 0, len(components))
+// affectedComponents returns in install order components whose installed version differs from the expected one and every component depending on them.
+// Components dependencies must include their indirect ones, as resolved by releaseComponents.
+func affectedComponents(components []Component, installed map[string]string, poolVersion string) []Component {
+	changed := make(map[string]bool, len(components))
 	for _, component := range components {
-		component.DependsOn = slices.DeleteFunc(slices.Clone(component.DependsOn), func(dependency string) bool {
-			return !slices.Contains(names, dependency)
-		})
-		graphComponents = append(graphComponents, component)
-	}
-
-	graph, err := componentsGraph(graphComponents)
-	if err != nil {
-		return nil, err
-	}
-
-	// Mark changed components and all their descendants in the dependency graph
-	affected := make(map[string]bool, len(components))
-	for _, component := range components {
-		if installed[component.Name] == expandVersion(component.Version, poolVersion) {
-			continue
-		}
-
-		affected[component.Name] = true
-		descendants, err := graph.GetDescendants(component.Name)
-		if err != nil {
-			return nil, fmt.Errorf("failed to get components depending on %s: %w", component.Name, err)
-		}
-		for descendant := range descendants {
-			affected[descendant] = true
-		}
+		changed[component.Name] = installed[component.Name] != expandVersion(component.Version, poolVersion)
 	}
 
 	return slices.DeleteFunc(slices.Clone(components), func(component Component) bool {
-		return !affected[component.Name]
-	}), nil
+		return !changed[component.Name] && !slices.ContainsFunc(component.DependsOn, func(dependency string) bool {
+			return changed[dependency]
+		})
+	})
 }
 
 // planComponents resolves every uninstall and install to be performed for the given components and returns them in install order

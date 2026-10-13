@@ -16,6 +16,15 @@ var testRelease = []Component{
 	{Name: "kubelet", DependsOn: []string{"containerd"}},
 }
 
+// testResolvedRelease is testRelease with dependencies resolved by releaseComponents
+var testResolvedRelease = []Component{
+	{Name: "cni-plugins", Version: "1.9.1"},
+	{Name: "runc", Version: "1.5.2"},
+	{Name: "crictl", Version: "1.37.0"},
+	{Name: "containerd", Version: "2.3.6", DependsOn: []string{"cni-plugins", "runc", "crictl"}},
+	{Name: "kubelet", DependsOn: []string{"cni-plugins", "runc", "crictl", "containerd"}},
+}
+
 // testInstalled returns the installed versions matching testRelease, with the given overrides
 func testInstalled(overrides map[string]string) map[string]string {
 	installed := map[string]string{
@@ -121,56 +130,56 @@ func TestAffectedComponents(t *testing.T) {
 	}{
 		{
 			name:        "nothing changed",
-			components:  testRelease,
+			components:  testResolvedRelease,
 			installed:   testInstalled(nil),
 			poolVersion: "1.37.1",
 			expected:    []string{},
 		},
 		{
 			name:        "only kubelet changed",
-			components:  testRelease,
+			components:  testResolvedRelease,
 			installed:   testInstalled(nil),
 			poolVersion: "1.37.2",
 			expected:    []string{"kubelet"},
 		},
 		{
 			name:        "runc changed",
-			components:  testRelease,
+			components:  testResolvedRelease,
 			installed:   testInstalled(map[string]string{"runc": "1.4.3"}),
 			poolVersion: "1.37.1",
 			expected:    []string{"runc", "containerd", "kubelet"},
 		},
 		{
 			name:        "crictl changed",
-			components:  testRelease,
+			components:  testResolvedRelease,
 			installed:   testInstalled(map[string]string{"crictl": "1.36.0"}),
 			poolVersion: "1.37.1",
 			expected:    []string{"crictl", "containerd", "kubelet"},
 		},
 		{
 			name:        "cni-plugins changed does not affect siblings",
-			components:  testRelease,
+			components:  testResolvedRelease,
 			installed:   testInstalled(map[string]string{"cni-plugins": "1.9.0"}),
 			poolVersion: "1.37.1",
 			expected:    []string{"cni-plugins", "containerd", "kubelet"},
 		},
 		{
 			name:        "fresh node",
-			components:  testRelease,
+			components:  testResolvedRelease,
 			installed:   map[string]string{},
 			poolVersion: "1.37.1",
 			expected:    []string{"cni-plugins", "runc", "crictl", "containerd", "kubelet"},
 		},
 		{
 			name:        "crash after containerd uninstall",
-			components:  testRelease,
+			components:  testResolvedRelease,
 			installed:   testInstalled(map[string]string{"containerd": "uninstalled", "kubelet": "uninstalled"}),
 			poolVersion: "1.37.1",
 			expected:    []string{"containerd", "kubelet"},
 		},
 		{
 			name:        "crash after containerd reinstall",
-			components:  testRelease,
+			components:  testResolvedRelease,
 			installed:   testInstalled(map[string]string{"kubelet": "uninstalled"}),
 			poolVersion: "1.37.1",
 			expected:    []string{"kubelet"},
@@ -182,21 +191,11 @@ func TestAffectedComponents(t *testing.T) {
 			poolVersion: "1.37.1",
 			expected:    []string{"kubelet"},
 		},
-		{
-			name:        "dependency filtered out by tags",
-			components:  []Component{{Name: "kubelet", DependsOn: []string{"containerd"}}},
-			installed:   map[string]string{"containerd": "2.3.4", "kubelet": "1.37.1"},
-			poolVersion: "1.37.1",
-			expected:    []string{},
-		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			affected, err := affectedComponents(tt.components, tt.installed, tt.poolVersion)
-			if err != nil {
-				t.Fatalf("affectedComponents() error = %v", err)
-			}
+			affected := affectedComponents(tt.components, tt.installed, tt.poolVersion)
 			if result := componentNames(affected); !slices.Equal(result, tt.expected) {
 				t.Errorf("affectedComponents() = %v, expected %v", result, tt.expected)
 			}
@@ -298,6 +297,7 @@ func TestReleaseComponents(t *testing.T) {
 	tests := []struct {
 		name     string
 		releases string
+		tags     []string
 		wantErr  bool
 		expected []Component
 	}{
@@ -345,6 +345,44 @@ func TestReleaseComponents(t *testing.T) {
 			},
 		},
 		{
+			name: "indirect dependencies",
+			releases: `versions:
+  1.37.1:
+    - name: runc
+      version: "1.5.2"
+    - name: containerd
+      version: "2.3.6"
+      depends_on: [runc]
+    - name: kubelet
+      depends_on: [containerd]
+`,
+			expected: []Component{
+				{Name: "runc", Version: "1.5.2"},
+				{Name: "containerd", Version: "2.3.6", DependsOn: []string{"runc"}},
+				{Name: "kubelet", DependsOn: []string{"runc", "containerd"}},
+			},
+		},
+		{
+			name: "dependency filtered out by tags",
+			releases: `versions:
+  1.37.1:
+    - name: runc
+      version: "1.5.2"
+      tags: [node]
+    - name: containerd
+      version: "2.3.6"
+      depends_on: [runc]
+    - name: kubelet
+      depends_on: [containerd]
+      tags: [node]
+`,
+			tags: []string{"node"},
+			expected: []Component{
+				{Name: "runc", Version: "1.5.2"},
+				{Name: "kubelet", DependsOn: []string{"runc"}},
+			},
+		},
+		{
 			name: "invalid dependency",
 			releases: `versions:
   1.37.1:
@@ -359,7 +397,7 @@ func TestReleaseComponents(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			repoFS := fstest.MapFS{"releases.yaml": &fstest.MapFile{Data: []byte(tt.releases)}}
-			result, err := releaseComponents(repoFS, NodeMetadata{PoolVersion: "1.37.1"})
+			result, err := releaseComponents(repoFS, NodeMetadata{PoolVersion: "1.37.1", InstallerTags: tt.tags})
 			if (err != nil) != tt.wantErr {
 				t.Fatalf("releaseComponents() error = %v, wantErr %v", err, tt.wantErr)
 			}

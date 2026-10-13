@@ -64,6 +64,14 @@ func releaseComponents(repoFS fs.FS, nodemetadata NodeMetadata) ([]Component, er
 		}
 	}
 
+	// Ignore dependencies filtered out by installer tags, their own dependencies are already resolved
+	names := componentNames(filteredComponents)
+	for i, component := range filteredComponents {
+		filteredComponents[i].DependsOn = slices.DeleteFunc(slices.Clone(component.DependsOn), func(dependency string) bool {
+			return !slices.Contains(names, dependency)
+		})
+	}
+
 	return filteredComponents, nil
 }
 
@@ -102,7 +110,8 @@ func (v *componentsVisitor) Visit(vertex dag.Vertexer) {
 }
 
 // sortDependencies orders components so that each one comes after its dependencies,
-// independent components are ordered by name
+// independent components are ordered by name.
+// Each component dependencies are resolved to all its direct and indirect ones, in install order.
 func sortDependencies(components []Component) ([]Component, error) {
 	graph, err := componentsGraph(components)
 	if err != nil {
@@ -117,6 +126,17 @@ func sortDependencies(components []Component) ([]Component, error) {
 		visitor.components[component.Name] = component
 	}
 	graph.OrderedWalk(visitor)
+
+	for i, component := range visitor.sorted {
+		ancestors, err := graph.GetAncestors(component.Name)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get dependencies of %s: %w", component.Name, err)
+		}
+		visitor.sorted[i].DependsOn = slices.DeleteFunc(componentNames(visitor.sorted[:i]), func(name string) bool {
+			_, ok := ancestors[name]
+			return !ok
+		})
+	}
 
 	return visitor.sorted, nil
 }
