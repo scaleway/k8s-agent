@@ -42,12 +42,14 @@ func affectedComponents(components []Component, installed map[string]string, poo
 			Name:             component.Name,
 			InstalledVersion: installed[component.Name],
 			ExpectedVersion:  expected,
-			Reason:           "dependency changed",
 		}
-		if !isInstalled(action.InstalledVersion) {
+		switch {
+		case !isInstalled(action.InstalledVersion):
 			action.Reason = "not installed"
-		} else if changed {
+		case changed:
 			action.Reason = "version changed"
+		default:
+			action.Reason = "dependency changed"
 		}
 		actions = append(actions, action)
 	}
