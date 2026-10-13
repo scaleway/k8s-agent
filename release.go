@@ -1,12 +1,11 @@
 package main
 
 import (
-	"errors"
 	"fmt"
 	"io/fs"
+	"maps"
 	"slices"
 
-	"github.com/heimdalr/dag"
 	"gopkg.in/yaml.v3"
 )
 
@@ -78,64 +77,63 @@ func releaseComponents(repoFS fs.FS, nodemetadata NodeMetadata) ([]Component, er
 	return filteredComponents, nil
 }
 
-// componentsGraph returns the dependency graph of the components, with a pointer to each component stored in its vertex
-// and an edge from each dependency to its dependents.
+// sortDependencies orders components so that each one comes after its dependencies, keeping the release order otherwise.
+// Each component dependencies are resolved to all its direct and indirect ones, in install order.
 // It fails if a component is defined twice, depends on an unknown component or is part of a dependency cycle.
-func componentsGraph(components []Component) (*dag.DAG, error) {
-	graph := dag.NewDAG()
-	for i, component := range components {
-		err := graph.AddVertexByID(component.Name, &components[i])
-		if err != nil {
-			return nil, fmt.Errorf("invalid component %s: %w", component.Name, err)
+func sortDependencies(components []Component) ([]Component, error) {
+	byName := make(map[string]Component, len(components))
+	for _, component := range components {
+		if _, ok := byName[component.Name]; ok {
+			return nil, fmt.Errorf("component %s is defined twice", component.Name)
 		}
+		byName[component.Name] = component
+	}
+
+	sorted := make([]Component, 0, len(components))
+	resolved := make(map[string]map[string]bool, len(components))
+	visiting := make(map[string]bool)
+
+	var visit func(name string) error
+	visit = func(name string) error {
+		if _, ok := resolved[name]; ok {
+			return nil
+		}
+		if visiting[name] {
+			return fmt.Errorf("component %s is part of a dependency cycle", name)
+		}
+		visiting[name] = true
+
+		component := byName[name]
+		dependencies := make(map[string]bool)
+		for _, dependency := range component.DependsOn {
+			if _, ok := byName[dependency]; !ok {
+				return fmt.Errorf("component %s depends on unknown component %s", name, dependency)
+			}
+			if err := visit(dependency); err != nil {
+				return err
+			}
+			dependencies[dependency] = true
+			maps.Copy(dependencies, resolved[dependency])
+		}
+
+		component.DependsOn = nil
+		for _, installed := range sorted {
+			if dependencies[installed.Name] {
+				component.DependsOn = append(component.DependsOn, installed.Name)
+			}
+		}
+		resolved[name] = dependencies
+		sorted = append(sorted, component)
+		return nil
 	}
 
 	for _, component := range components {
-		for _, dependency := range component.DependsOn {
-			err := graph.AddEdge(dependency, component.Name)
-			if err != nil && !errors.As(err, &dag.EdgeDuplicateError{}) {
-				return nil, fmt.Errorf("invalid dependency %s of component %s: %w", dependency, component.Name, err)
-			}
+		if err := visit(component.Name); err != nil {
+			return nil, err
 		}
 	}
 
-	return graph, nil
-}
-
-// componentsVisitor collects the visited components in visit order
-type componentsVisitor struct {
-	sorted []Component
-}
-
-func (v *componentsVisitor) Visit(vertex dag.Vertexer) {
-	_, component := vertex.Vertex()
-	v.sorted = append(v.sorted, *component.(*Component))
-}
-
-// sortDependencies orders components so that each one comes after its dependencies.
-// Each component dependencies are resolved to all its direct and indirect ones, in install order.
-func sortDependencies(components []Component) ([]Component, error) {
-	graph, err := componentsGraph(components)
-	if err != nil {
-		return nil, err
-	}
-
-	visitor := &componentsVisitor{sorted: make([]Component, 0, len(components))}
-	graph.OrderedWalk(visitor)
-
-	names := componentNames(visitor.sorted)
-	for i, component := range visitor.sorted {
-		ancestors, err := graph.GetAncestors(component.Name)
-		if err != nil {
-			return nil, fmt.Errorf("failed to get dependencies of %s: %w", component.Name, err)
-		}
-		visitor.sorted[i].DependsOn = slices.DeleteFunc(slices.Clone(names[:i]), func(name string) bool {
-			_, ok := ancestors[name]
-			return !ok
-		})
-	}
-
-	return visitor.sorted, nil
+	return sorted, nil
 }
 
 // componentNames returns the names of the given components

@@ -48,12 +48,12 @@ func TestSortDependencies(t *testing.T) {
 		{
 			name:       "release",
 			components: testRelease,
-			expected:   []string{"cni-plugins", "crictl", "runc", "containerd", "kubelet"},
+			expected:   []string{"cni-plugins", "runc", "crictl", "containerd", "kubelet"},
 		},
 		{
-			name:       "no dependencies are ordered by name",
+			name:       "no dependencies keep release order",
 			components: []Component{{Name: "runc"}, {Name: "containerd"}},
-			expected:   []string{"containerd", "runc"},
+			expected:   []string{"runc", "containerd"},
 		},
 		{
 			name:       "dependency defined after",
@@ -61,7 +61,7 @@ func TestSortDependencies(t *testing.T) {
 			expected:   []string{"runc", "containerd"},
 		},
 		{
-			name: "independent components ordered by name",
+			name: "independent components keep release order",
 			components: []Component{
 				{Name: "cni-plugins"},
 				{Name: "runc"},
@@ -70,7 +70,7 @@ func TestSortDependencies(t *testing.T) {
 				{Name: "crictl"},
 				{Name: "other"},
 			},
-			expected: []string{"cni-plugins", "crictl", "other", "runc", "containerd", "kubelet"},
+			expected: []string{"cni-plugins", "runc", "crictl", "containerd", "kubelet", "other"},
 		},
 		{
 			name:       "dependency listed twice",
@@ -325,8 +325,8 @@ func TestReleaseComponents(t *testing.T) {
     - name: kubelet
 `,
 			expected: []Component{
-				{Name: "kubelet"},
 				{Name: "runc", Version: "1.5.2"},
+				{Name: "kubelet"},
 			},
 		},
 		{
