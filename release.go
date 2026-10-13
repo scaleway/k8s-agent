@@ -67,12 +67,12 @@ func releaseComponents(repoFS fs.FS, nodemetadata NodeMetadata) ([]Component, er
 // sortDependencies orders components so that each one comes after its dependencies, keeping the release order otherwise.
 // It fails if a component is defined twice, depends on an unknown component or is part of a dependency cycle.
 func sortDependencies(components []Component) ([]Component, error) {
-	byName := make(map[string]Component, len(components))
-	for _, component := range components {
-		if _, ok := byName[component.Name]; ok {
+	index := make(map[string]int, len(components))
+	for i, component := range components {
+		if _, ok := index[component.Name]; ok {
 			return nil, fmt.Errorf("component %s is defined twice", component.Name)
 		}
-		byName[component.Name] = component
+		index[component.Name] = i
 	}
 
 	sorted := make([]Component, 0, len(components))
@@ -89,11 +89,17 @@ func sortDependencies(components []Component) ([]Component, error) {
 		}
 		visiting[name] = true
 
-		component := byName[name]
+		component := components[index[name]]
 		for _, dependency := range component.DependsOn {
-			if _, ok := byName[dependency]; !ok {
+			if _, ok := index[dependency]; !ok {
 				return fmt.Errorf("component %s depends on unknown component %s", name, dependency)
 			}
+		}
+
+		// Visit dependencies in release order
+		dependencies := slices.Clone(component.DependsOn)
+		slices.SortFunc(dependencies, func(a, b string) int { return index[a] - index[b] })
+		for _, dependency := range dependencies {
 			if err := visit(dependency); err != nil {
 				return err
 			}

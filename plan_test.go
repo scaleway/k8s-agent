@@ -73,6 +73,11 @@ func TestSortDependencies(t *testing.T) {
 			expected: []string{"cni-plugins", "runc", "crictl", "containerd", "kubelet", "other"},
 		},
 		{
+			name:       "dependencies keep release order",
+			components: []Component{{Name: "c", DependsOn: []string{"b", "a"}}, {Name: "a"}, {Name: "b"}},
+			expected:   []string{"a", "b", "c"},
+		},
+		{
 			name:       "dependency listed twice",
 			components: []Component{{Name: "runc"}, {Name: "containerd", DependsOn: []string{"runc", "runc"}}},
 			expected:   []string{"runc", "containerd"},
