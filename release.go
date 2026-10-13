@@ -135,12 +135,3 @@ func sortDependencies(components []Component) ([]Component, error) {
 
 	return sorted, nil
 }
-
-// componentNames returns the names of the given components
-func componentNames(components []Component) []string {
-	names := make([]string, 0, len(components))
-	for _, component := range components {
-		names = append(names, component.Name)
-	}
-	return names
-}
