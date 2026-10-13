@@ -61,17 +61,17 @@ func releaseComponents(repoFS fs.FS, nodemetadata NodeMetadata) ([]Component, er
 				}
 			}
 		}
-	}
 
-	// Ignore dependencies filtered out by installer tags, their own dependencies are already resolved
-	kept := make(map[string]bool, len(filteredComponents))
-	for _, component := range filteredComponents {
-		kept[component.Name] = true
-	}
-	for i, component := range filteredComponents {
-		filteredComponents[i].DependsOn = slices.DeleteFunc(slices.Clone(component.DependsOn), func(dependency string) bool {
-			return !kept[dependency]
-		})
+		// Ignore dependencies filtered out by installer tags, their own dependencies are already resolved
+		kept := make(map[string]bool, len(filteredComponents))
+		for _, component := range filteredComponents {
+			kept[component.Name] = true
+		}
+		for i, component := range filteredComponents {
+			filteredComponents[i].DependsOn = slices.DeleteFunc(slices.Clone(component.DependsOn), func(dependency string) bool {
+				return !kept[dependency]
+			})
+		}
 	}
 
 	return filteredComponents, nil
