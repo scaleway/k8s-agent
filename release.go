@@ -45,19 +45,18 @@ func releaseComponents(repoFS fs.FS, nodemetadata NodeMetadata) ([]Component, er
 		return nil, fmt.Errorf("invalid release %s: %w", nodemetadata.PoolVersion, err)
 	}
 
-	filteredComponents := []Component{}
-
 	// If no installer tags are specified, include all components
 	if len(nodemetadata.InstallerTags) == 0 {
-		filteredComponents = append(filteredComponents, releaseComponents...)
-	} else {
-		// Otherwise, include only components that match at least one of the installer tags
-		for _, component := range releaseComponents {
-			for _, tag := range nodemetadata.InstallerTags {
-				if slices.Contains(component.Tags, tag) {
-					filteredComponents = append(filteredComponents, component)
-					break
-				}
+		return releaseComponents, nil
+	}
+
+	// Otherwise, include only components that match at least one of the installer tags
+	filteredComponents := []Component{}
+	for _, component := range releaseComponents {
+		for _, tag := range nodemetadata.InstallerTags {
+			if slices.Contains(component.Tags, tag) {
+				filteredComponents = append(filteredComponents, component)
+				break
 			}
 		}
 	}
