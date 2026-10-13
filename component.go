@@ -117,10 +117,10 @@ func uninstallComponents(ctx context.Context, repoFS fs.FS, actions []ComponentA
 		}
 
 		// Uninstall the component
-		slog.Info("Uninstall component", slog.String("component", action.Component.Name), slog.String("version", action.InstalledVersion), slog.String("reason", action.Reason))
-		err := processComponentMetadata(repoFS, action.Component.Name, action.InstalledVersion, "uninstalled", action.Uninstall, nodemetadata)
+		slog.Info("Uninstall component", slog.String("component", action.Name), slog.String("version", action.InstalledVersion), slog.String("reason", action.Reason))
+		err := processComponentMetadata(repoFS, action.Name, action.InstalledVersion, "uninstalled", action.Uninstall, nodemetadata)
 		if err != nil {
-			return fmt.Errorf("failed to uninstall component %s: %w", action.Component.Name, err)
+			return fmt.Errorf("failed to uninstall component %s: %w", action.Name, err)
 		}
 	}
 
@@ -138,10 +138,10 @@ func installComponents(ctx context.Context, repoFS fs.FS, actions []ComponentAct
 		}
 
 		// Install the component
-		slog.Info("Install component", slog.String("component", action.Component.Name), slog.String("version", action.ExpectedVersion), slog.String("reason", action.Reason))
-		err := processComponentMetadata(repoFS, action.Component.Name, action.ExpectedVersion, action.ExpectedVersion, action.Install, nodemetadata)
+		slog.Info("Install component", slog.String("component", action.Name), slog.String("version", action.ExpectedVersion), slog.String("reason", action.Reason))
+		err := processComponentMetadata(repoFS, action.Name, action.ExpectedVersion, action.ExpectedVersion, action.Install, nodemetadata)
 		if err != nil {
-			return fmt.Errorf("failed to install component %s: %w", action.Component.Name, err)
+			return fmt.Errorf("failed to install component %s: %w", action.Name, err)
 		}
 	}
 

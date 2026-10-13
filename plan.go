@@ -9,7 +9,7 @@ import (
 
 // ComponentAction is an uninstall/install plan for a component
 type ComponentAction struct {
-	Component        Component
+	Name             string
 	InstalledVersion string
 	ExpectedVersion  string
 	Reason           string
@@ -47,7 +47,7 @@ func planComponents(repoFS fs.FS, components []Component, installed map[string]s
 	actions := make([]ComponentAction, 0, len(components))
 	for _, component := range components {
 		action := ComponentAction{
-			Component:        component,
+			Name:             component.Name,
 			InstalledVersion: installed[component.Name],
 			ExpectedVersion:  expandVersion(component.Version, poolVersion),
 			Reason:           "version changed",
