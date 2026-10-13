@@ -58,18 +58,18 @@ func affectedComponents(components []Component, installed map[string]string, poo
 }
 
 // planComponents fills the uninstall and install recipes of the given actions
-func planComponents(repoFS fs.FS, actions []ComponentAction) ([]ComponentAction, error) {
+func planComponents(repoFS fs.FS, actions []ComponentAction) error {
 	for i, action := range actions {
 		versions, err := componentVersions(repoFS, action.Name)
 		if err != nil {
-			return nil, fmt.Errorf("failed to read %s metadata: %w", action.Name, err)
+			return fmt.Errorf("failed to read %s metadata: %w", action.Name, err)
 		}
 
 		// Uninstall
 		if isInstalled(action.InstalledVersion) {
 			sections, err := versions.version(action.InstalledVersion)
 			if err != nil {
-				return nil, fmt.Errorf("failed to read %s metadata for installed version %s: %w", action.Name, action.InstalledVersion, err)
+				return fmt.Errorf("failed to read %s metadata for installed version %s: %w", action.Name, action.InstalledVersion, err)
 			}
 			actions[i].Uninstall = sections.Uninstall
 		}
@@ -77,10 +77,10 @@ func planComponents(repoFS fs.FS, actions []ComponentAction) ([]ComponentAction,
 		// Install
 		sections, err := versions.version(action.ExpectedVersion)
 		if err != nil {
-			return nil, fmt.Errorf("failed to read %s metadata for expected version %s: %w", action.Name, action.ExpectedVersion, err)
+			return fmt.Errorf("failed to read %s metadata for expected version %s: %w", action.Name, action.ExpectedVersion, err)
 		}
 		actions[i].Install = sections.Install
 	}
 
-	return actions, nil
+	return nil
 }

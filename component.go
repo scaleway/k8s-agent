@@ -72,10 +72,10 @@ func processComponents(ctx context.Context, nodemetadata NodeMetadata) error {
 	}
 
 	// Get the components to reinstall
-	affected := affectedComponents(releaseComponents, installed, nodemetadata.PoolVersion)
+	actions := affectedComponents(releaseComponents, installed, nodemetadata.PoolVersion)
 
 	// Create a plan to uninstall and install the affected components
-	actions, err := planComponents(repoFS, affected)
+	err = planComponents(repoFS, actions)
 	if err != nil {
 		return fmt.Errorf("failed to plan components: %w", err)
 	}

@@ -279,7 +279,8 @@ func TestPlanComponents(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			actions, err := planComponents(tt.repoFS, []ComponentAction{{Name: "runc", InstalledVersion: tt.installed, ExpectedVersion: "1.5.2"}})
+			actions := []ComponentAction{{Name: "runc", InstalledVersion: tt.installed, ExpectedVersion: "1.5.2"}}
+			err := planComponents(tt.repoFS, actions)
 			if (err != nil) != tt.wantErr {
 				t.Fatalf("planComponents() error = %v, wantErr %v", err, tt.wantErr)
 			}
