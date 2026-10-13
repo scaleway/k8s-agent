@@ -56,6 +56,11 @@ func ListComponentsVersions() (map[string]string, error) {
 		if err != nil {
 			return nil, fmt.Errorf("failed to unmarshal versions file: %w", err)
 		}
+
+		// A "null" file content unmarshals to a nil map
+		if versions == nil {
+			versions = make(map[string]string)
+		}
 	} else if err != nil && !os.IsNotExist(err) {
 		// An error occurred while checking the file (other than it not existing)
 		return nil, fmt.Errorf("failed to stat versions file: %w", err)
