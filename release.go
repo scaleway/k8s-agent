@@ -65,22 +65,26 @@ func releaseComponents(repoFS fs.FS, nodemetadata NodeMetadata) ([]Component, er
 	}
 
 	// Ignore dependencies filtered out by installer tags, their own dependencies are already resolved
-	names := componentNames(filteredComponents)
+	kept := make(map[string]bool, len(filteredComponents))
+	for _, component := range filteredComponents {
+		kept[component.Name] = true
+	}
 	for i, component := range filteredComponents {
 		filteredComponents[i].DependsOn = slices.DeleteFunc(slices.Clone(component.DependsOn), func(dependency string) bool {
-			return !slices.Contains(names, dependency)
+			return !kept[dependency]
 		})
 	}
 
 	return filteredComponents, nil
 }
 
-// componentsGraph returns the dependency graph of the components, with an edge from each dependency to its dependents.
+// componentsGraph returns the dependency graph of the components, with a pointer to each component stored in its vertex
+// and an edge from each dependency to its dependents.
 // It fails if a component is defined twice, depends on an unknown component or is part of a dependency cycle.
 func componentsGraph(components []Component) (*dag.DAG, error) {
 	graph := dag.NewDAG()
-	for _, component := range components {
-		err := graph.AddVertexByID(component.Name, component.Name)
+	for i, component := range components {
+		err := graph.AddVertexByID(component.Name, &components[i])
 		if err != nil {
 			return nil, fmt.Errorf("invalid component %s: %w", component.Name, err)
 		}
@@ -100,13 +104,12 @@ func componentsGraph(components []Component) (*dag.DAG, error) {
 
 // componentsVisitor collects the visited components in visit order
 type componentsVisitor struct {
-	components map[string]Component
-	sorted     []Component
+	sorted []Component
 }
 
 func (v *componentsVisitor) Visit(vertex dag.Vertexer) {
-	id, _ := vertex.Vertex()
-	v.sorted = append(v.sorted, v.components[id])
+	_, component := vertex.Vertex()
+	v.sorted = append(v.sorted, *component.(*Component))
 }
 
 // sortDependencies orders components so that each one comes after its dependencies,
@@ -118,21 +121,16 @@ func sortDependencies(components []Component) ([]Component, error) {
 		return nil, err
 	}
 
-	visitor := &componentsVisitor{
-		components: make(map[string]Component, len(components)),
-		sorted:     make([]Component, 0, len(components)),
-	}
-	for _, component := range components {
-		visitor.components[component.Name] = component
-	}
+	visitor := &componentsVisitor{sorted: make([]Component, 0, len(components))}
 	graph.OrderedWalk(visitor)
 
+	names := componentNames(visitor.sorted)
 	for i, component := range visitor.sorted {
 		ancestors, err := graph.GetAncestors(component.Name)
 		if err != nil {
 			return nil, fmt.Errorf("failed to get dependencies of %s: %w", component.Name, err)
 		}
-		visitor.sorted[i].DependsOn = slices.DeleteFunc(componentNames(visitor.sorted[:i]), func(name string) bool {
+		visitor.sorted[i].DependsOn = slices.DeleteFunc(slices.Clone(names[:i]), func(name string) bool {
 			_, ok := ancestors[name]
 			return !ok
 		})
