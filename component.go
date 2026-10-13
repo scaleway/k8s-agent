@@ -65,14 +65,29 @@ func processComponents(ctx context.Context, nodemetadata NodeMetadata) error {
 		return fmt.Errorf("failed to get release components: %w", err)
 	}
 
+	// Get the installed components versions
+	installed, err := ListComponentsVersions()
+	if err != nil {
+		return fmt.Errorf("failed to list components versions: %w", err)
+	}
+
+	// Get the components to reinstall
+	actions := affectedComponents(releaseComponents, installed, nodemetadata.PoolVersion)
+
+	// Create a plan to uninstall and install the affected components
+	err = planComponents(repoFS, actions)
+	if err != nil {
+		return fmt.Errorf("failed to plan components: %w", err)
+	}
+
 	// Uninstall components (components are uninstalled in reverse order)
-	err = uninstallComponents(ctx, repoFS, releaseComponents, nodemetadata)
+	err = uninstallComponents(ctx, repoFS, actions, nodemetadata)
 	if err != nil {
 		return fmt.Errorf("failed to uninstall components: %w", err)
 	}
 
 	// Install components
-	err = installComponents(ctx, repoFS, releaseComponents, nodemetadata)
+	err = installComponents(ctx, repoFS, actions, nodemetadata)
 	if err != nil {
 		return fmt.Errorf("failed to install components: %w", err)
 	}
@@ -86,14 +101,9 @@ func processComponents(ctx context.Context, nodemetadata NodeMetadata) error {
 	return nil
 }
 
-func uninstallComponents(ctx context.Context, repoFS fs.FS, components []Component, nodemetadata NodeMetadata) error {
-	// Copy and reverse component list to uninstall
-	reversedComponents := make([]Component, len(components))
-	copy(reversedComponents, components)
-	slices.Reverse(reversedComponents)
-
-	// Uninstall component one by one
-	for _, component := range reversedComponents {
+func uninstallComponents(ctx context.Context, repoFS fs.FS, actions []ComponentAction, nodemetadata NodeMetadata) error {
+	// Uninstall component one by one, in reverse install order
+	for _, action := range slices.Backward(actions) {
 		// Check context cancellation
 		select {
 		case <-ctx.Done():
@@ -101,36 +111,31 @@ func uninstallComponents(ctx context.Context, repoFS fs.FS, components []Compone
 		default:
 		}
 
-		// If the component is not installed or the version is the same, skip it
-		installedVersion, err := GetComponentVersion(component.Name)
-		if err != nil {
-			return fmt.Errorf("failed to get component version: %w", err)
-		}
-		expectedVersion := expandVersion(component.Version, nodemetadata.PoolVersion)
-		if installedVersion == "" || installedVersion == "uninstalled" || installedVersion == expectedVersion {
+		// If the component is not installed, skip it
+		if !isInstalled(action.InstalledVersion) {
 			continue
 		}
 
-		// Read component specific "metadata.yaml" file inside the component directory in root of the repository
-		componentSections, err := componentMetadata(repoFS, component.Name, installedVersion)
+		// Uninstall the component
+		slog.Info("Uninstall component", slog.String("component", action.Name), slog.String("version", action.InstalledVersion), slog.String("reason", action.Reason))
+		err := processComponentMetadata(repoFS, action.Name, action.InstalledVersion, action.Uninstall, nodemetadata)
 		if err != nil {
-			return fmt.Errorf("failed to read component metadata: %w", err)
+			return fmt.Errorf("failed to uninstall component %s: %w", action.Name, err)
 		}
 
-		// Uninstall the component
-		slog.Info("Uninstall component", slog.String("component", component.Name), slog.String("version", installedVersion))
-		err = processComponentMetadata(repoFS, component.Name, "uninstalled", componentSections.Uninstall, nodemetadata)
+		// Store the component as uninstalled in the versions file
+		err = SetComponentVersion(action.Name, uninstalledVersion)
 		if err != nil {
-			return fmt.Errorf("failed to uninstall component %s: %w", component.Name, err)
+			return fmt.Errorf("failed to store component %s version: %w", action.Name, err)
 		}
 	}
 
 	return nil
 }
 
-func installComponents(ctx context.Context, repoFS fs.FS, components []Component, nodemetadata NodeMetadata) error {
+func installComponents(ctx context.Context, repoFS fs.FS, actions []ComponentAction, nodemetadata NodeMetadata) error {
 	// Install component one by one
-	for _, component := range components {
+	for _, action := range actions {
 		// Check context cancellation
 		select {
 		case <-ctx.Done():
@@ -138,30 +143,17 @@ func installComponents(ctx context.Context, repoFS fs.FS, components []Component
 		default:
 		}
 
-		// Get current installed version of the component
-		installedVersion, err := GetComponentVersion(component.Name)
-		if err != nil {
-			return fmt.Errorf("failed to get component version: %w", err)
-		}
-		expectedVersion := expandVersion(component.Version, nodemetadata.PoolVersion)
-
-		// If the component is already installed and the version is the same, skip it
-		if installedVersion == expectedVersion {
-			slog.Info("Component already installed", slog.String("component", component.Name), slog.String("version", expectedVersion))
-			continue
-		}
-
-		// Read component specific "metadata.yaml" file inside the component directory in root of the repository
-		componentSections, err := componentMetadata(repoFS, component.Name, expectedVersion)
-		if err != nil {
-			return fmt.Errorf("failed to read component metadata: %w", err)
-		}
-
 		// Install the component
-		slog.Info("Install component", slog.String("component", component.Name), slog.String("version", expectedVersion))
-		err = processComponentMetadata(repoFS, component.Name, expectedVersion, componentSections.Install, nodemetadata)
+		slog.Info("Install component", slog.String("component", action.Name), slog.String("version", action.ExpectedVersion), slog.String("reason", action.Reason))
+		err := processComponentMetadata(repoFS, action.Name, action.ExpectedVersion, action.Install, nodemetadata)
 		if err != nil {
-			return fmt.Errorf("failed to install component %s: %w", component.Name, err)
+			return fmt.Errorf("failed to install component %s: %w", action.Name, err)
+		}
+
+		// Store the component version in the versions file
+		err = SetComponentVersion(action.Name, action.ExpectedVersion)
+		if err != nil {
+			return fmt.Errorf("failed to store component %s version: %w", action.Name, err)
 		}
 	}
 
@@ -313,35 +305,34 @@ func processComponentMetadata(repoFS fs.FS, name, version string, resources []Co
 		}
 	}
 
-	// Store the component version in the versions file
-	err := SetComponentVersion(name, version)
-	if err != nil {
-		return fmt.Errorf("failed to store component version: %w", err)
-	}
-
 	return nil
 }
 
-// releaseComponents returns the list of components for the given version
-func componentMetadata(repoFS fs.FS, name, version string) (ComponentSections, error) {
+// componentVersions reads and parses the metadata of every version of the given component
+func componentVersions(repoFS fs.FS, name string) (ComponentVersions, error) {
 	// Read component specific "metadata.yaml" file inside the component directory in root of the repository
 	componentMetadataFile, err := fs.ReadFile(repoFS, name+"/metadata.yaml")
 	if err != nil {
-		return ComponentSections{}, fmt.Errorf("failed to read component file: %w", err)
+		return ComponentVersions{}, fmt.Errorf("failed to read component file: %w", err)
 	}
 
 	// Unmarshal the metadata file
 	var componentMetadata ComponentVersions
 	err = yaml.Unmarshal(componentMetadataFile, &componentMetadata)
 	if err != nil {
-		return ComponentSections{}, fmt.Errorf("failed to unmarshal component file: %w", err)
+		return ComponentVersions{}, fmt.Errorf("failed to unmarshal component file: %w", err)
 	}
 
+	return componentMetadata, nil
+}
+
+// version returns the metadata sections for the given component version
+func (c ComponentVersions) version(version string) (ComponentSections, error) {
 	// Remove subversion suffix from the version
 	version = trimVersion(version)
 
 	// Get the metadata for the given version
-	componentMetadataVersion, ok := componentMetadata.Versions[version]
+	componentMetadataVersion, ok := c.Versions[version]
 	if !ok {
 		return ComponentSections{}, fmt.Errorf("component version %s not found", version)
 	}

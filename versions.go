@@ -18,23 +18,9 @@ import (
 const versionsFile = "/etc/scw-k8s-versions.json"
 
 func SetComponentVersion(component string, version string) error {
-	versions := make(map[string]string)
-
-	// Check if versions file exists
-	if info, err := os.Stat(versionsFile); err == nil && !info.IsDir() {
-		// File exists: read and unmarshal its content
-		jsonVersions, err := os.ReadFile(versionsFile)
-		if err != nil {
-			return fmt.Errorf("failed to read versions file: %w", err)
-		}
-
-		err = json.Unmarshal(jsonVersions, &versions)
-		if err != nil {
-			return fmt.Errorf("failed to unmarshal versions file: %w", err)
-		}
-	} else if err != nil && !os.IsNotExist(err) {
-		// An error occurred while checking the file (other than it not existing)
-		return fmt.Errorf("failed to stat versions file: %w", err)
+	versions, err := ListComponentsVersions()
+	if err != nil {
+		return err
 	}
 
 	// Set component version
@@ -55,35 +41,6 @@ func SetComponentVersion(component string, version string) error {
 	return nil
 }
 
-func GetComponentVersion(component string) (string, error) {
-	versions := make(map[string]string)
-
-	// Check if versions file exists
-	if info, err := os.Stat(versionsFile); err == nil && !info.IsDir() {
-		// File exists: read and unmarshal its content
-		jsonVersions, err := os.ReadFile(versionsFile)
-		if err != nil {
-			return "", fmt.Errorf("failed to read versions file: %w", err)
-		}
-
-		err = json.Unmarshal(jsonVersions, &versions)
-		if err != nil {
-			return "", fmt.Errorf("failed to unmarshal versions file: %w", err)
-		}
-	} else if err != nil && !os.IsNotExist(err) {
-		// An error occurred while checking the file (other than it not existing)
-		return "", fmt.Errorf("failed to stat versions file: %w", err)
-	}
-
-	// Get component version
-	version, ok := versions[component]
-	if !ok {
-		return "", nil
-	}
-
-	return version, nil
-}
-
 func ListComponentsVersions() (map[string]string, error) {
 	versions := make(map[string]string)
 
@@ -98,6 +55,11 @@ func ListComponentsVersions() (map[string]string, error) {
 		err = json.Unmarshal(jsonVersions, &versions)
 		if err != nil {
 			return nil, fmt.Errorf("failed to unmarshal versions file: %w", err)
+		}
+
+		// A "null" file content unmarshals to a nil map
+		if versions == nil {
+			versions = make(map[string]string)
 		}
 	} else if err != nil && !os.IsNotExist(err) {
 		// An error occurred while checking the file (other than it not existing)
