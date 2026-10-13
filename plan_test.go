@@ -136,6 +136,7 @@ func TestAffectedComponents(t *testing.T) {
 		installed   map[string]string
 		poolVersion string
 		expected    []string
+		reasons     map[string]string
 	}{
 		{
 			name:        "nothing changed",
@@ -157,6 +158,7 @@ func TestAffectedComponents(t *testing.T) {
 			installed:   testInstalled(map[string]string{"runc": "1.4.3"}),
 			poolVersion: "1.37.1",
 			expected:    []string{"runc", "containerd", "kubelet"},
+			reasons:     map[string]string{"runc": "version changed", "containerd": "dependency changed", "kubelet": "dependency changed"},
 		},
 		{
 			name:        "crictl changed",
@@ -185,6 +187,7 @@ func TestAffectedComponents(t *testing.T) {
 			installed:   testInstalled(map[string]string{"containerd": "uninstalled", "kubelet": "uninstalled"}),
 			poolVersion: "1.37.1",
 			expected:    []string{"containerd", "kubelet"},
+			reasons:     map[string]string{"containerd": "not installed", "kubelet": "not installed"},
 		},
 		{
 			name:        "crash after containerd reinstall",
@@ -205,7 +208,14 @@ func TestAffectedComponents(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			affected := affectedComponents(tt.components, tt.installed, tt.poolVersion)
-			if result := componentNames(affected); !slices.Equal(result, tt.expected) {
+			result := make([]string, 0, len(affected))
+			for _, action := range affected {
+				result = append(result, action.Name)
+				if reason, ok := tt.reasons[action.Name]; ok && action.Reason != reason {
+					t.Errorf("%s reason = %q, expected %q", action.Name, action.Reason, reason)
+				}
+			}
+			if !slices.Equal(result, tt.expected) {
 				t.Errorf("affectedComponents() = %v, expected %v", result, tt.expected)
 			}
 		})
@@ -224,59 +234,51 @@ func testRepoFS(versions ...string) fstest.MapFS {
 }
 
 func TestPlanComponents(t *testing.T) {
-	components := []Component{{Name: "runc", Version: "1.5.2"}}
-
 	tests := []struct {
 		name          string
 		repoFS        fstest.MapFS
-		installed     map[string]string
+		installed     string
 		wantErr       bool
 		wantUninstall string
-		wantReason    string
 	}{
 		{
 			name:          "upgrade",
 			repoFS:        testRepoFS("1.4.3", "1.5.2"),
-			installed:     map[string]string{"runc": "1.4.3"},
+			installed:     "1.4.3",
 			wantUninstall: "uninstall 1.4.3",
-			wantReason:    "version changed",
 		},
 		{
 			name:          "reinstall for a dependency",
 			repoFS:        testRepoFS("1.5.2"),
-			installed:     map[string]string{"runc": "1.5.2"},
+			installed:     "1.5.2",
 			wantUninstall: "uninstall 1.5.2",
-			wantReason:    "dependency changed",
 		},
 		{
-			name:       "not installed",
-			repoFS:     testRepoFS("1.5.2"),
-			installed:  map[string]string{},
-			wantReason: "not installed",
+			name:   "not installed",
+			repoFS: testRepoFS("1.5.2"),
 		},
 		{
-			name:       "previously uninstalled",
-			repoFS:     testRepoFS("1.5.2"),
-			installed:  map[string]string{"runc": "uninstalled"},
-			wantReason: "not installed",
+			name:      "previously uninstalled",
+			repoFS:    testRepoFS("1.5.2"),
+			installed: "uninstalled",
 		},
 		{
 			name:      "installed version missing from metadata",
 			repoFS:    testRepoFS("1.5.2"),
-			installed: map[string]string{"runc": "1.3.0"},
+			installed: "1.3.0",
 			wantErr:   true,
 		},
 		{
 			name:      "expected version missing from metadata",
 			repoFS:    testRepoFS("1.4.3"),
-			installed: map[string]string{"runc": "1.4.3"},
+			installed: "1.4.3",
 			wantErr:   true,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			actions, err := planComponents(tt.repoFS, components, tt.installed, "1.37.1")
+			actions, err := planComponents(tt.repoFS, []ComponentAction{{Name: "runc", InstalledVersion: tt.installed, ExpectedVersion: "1.5.2"}})
 			if (err != nil) != tt.wantErr {
 				t.Fatalf("planComponents() error = %v, wantErr %v", err, tt.wantErr)
 			}
@@ -285,9 +287,6 @@ func TestPlanComponents(t *testing.T) {
 			}
 
 			action := actions[0]
-			if action.Reason != tt.wantReason {
-				t.Errorf("reason = %q, expected %q", action.Reason, tt.wantReason)
-			}
 			if len(action.Install) != 1 || action.Install[0].Scripts[0].Cmd != "install 1.5.2" {
 				t.Errorf("install = %+v, expected the 1.5.2 recipe", action.Install)
 			}
