@@ -3,7 +3,6 @@ package main
 import (
 	"fmt"
 	"io/fs"
-	"maps"
 	"slices"
 
 	"gopkg.in/yaml.v3"
@@ -61,24 +60,12 @@ func releaseComponents(repoFS fs.FS, nodemetadata NodeMetadata) ([]Component, er
 				}
 			}
 		}
-
-		// Ignore dependencies filtered out by installer tags, their own dependencies are already resolved
-		kept := make(map[string]bool, len(filteredComponents))
-		for _, component := range filteredComponents {
-			kept[component.Name] = true
-		}
-		for i, component := range filteredComponents {
-			filteredComponents[i].DependsOn = slices.DeleteFunc(slices.Clone(component.DependsOn), func(dependency string) bool {
-				return !kept[dependency]
-			})
-		}
 	}
 
 	return filteredComponents, nil
 }
 
 // sortDependencies orders components so that each one comes after its dependencies, keeping the release order otherwise.
-// Each component dependencies are resolved to all its direct and indirect ones, in install order.
 // It fails if a component is defined twice, depends on an unknown component or is part of a dependency cycle.
 func sortDependencies(components []Component) ([]Component, error) {
 	byName := make(map[string]Component, len(components))
@@ -90,12 +77,12 @@ func sortDependencies(components []Component) ([]Component, error) {
 	}
 
 	sorted := make([]Component, 0, len(components))
-	resolved := make(map[string]map[string]bool, len(components))
+	done := make(map[string]bool, len(components))
 	visiting := make(map[string]bool)
 
 	var visit func(name string) error
 	visit = func(name string) error {
-		if _, ok := resolved[name]; ok {
+		if done[name] {
 			return nil
 		}
 		if visiting[name] {
@@ -104,7 +91,6 @@ func sortDependencies(components []Component) ([]Component, error) {
 		visiting[name] = true
 
 		component := byName[name]
-		dependencies := make(map[string]bool)
 		for _, dependency := range component.DependsOn {
 			if _, ok := byName[dependency]; !ok {
 				return fmt.Errorf("component %s depends on unknown component %s", name, dependency)
@@ -112,17 +98,9 @@ func sortDependencies(components []Component) ([]Component, error) {
 			if err := visit(dependency); err != nil {
 				return err
 			}
-			dependencies[dependency] = true
-			maps.Copy(dependencies, resolved[dependency])
 		}
 
-		component.DependsOn = nil
-		for _, installed := range sorted {
-			if dependencies[installed.Name] {
-				component.DependsOn = append(component.DependsOn, installed.Name)
-			}
-		}
-		resolved[name] = dependencies
+		done[name] = true
 		sorted = append(sorted, component)
 		return nil
 	}

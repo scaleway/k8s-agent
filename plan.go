@@ -22,8 +22,9 @@ func isInstalled(installedVersion string) bool {
 	return installedVersion != "" && installedVersion != "uninstalled"
 }
 
-// affectedComponents returns in install order an action, without recipes, for components whose installed version differs from the expected one and every component depending on them.
-// Components dependencies must include their indirect ones, as resolved by releaseComponents.
+// affectedComponents returns in install order an action, without recipes, for components whose installed version differs from the expected one
+// and every component depending on them, directly or through another affected component.
+// Components must be in install order, as sorted by releaseComponents.
 func affectedComponents(components []Component, installed map[string]string, poolVersion string) []ComponentAction {
 	expected := make(map[string]string, len(components))
 	changed := make(map[string]bool, len(components))
@@ -32,12 +33,14 @@ func affectedComponents(components []Component, installed map[string]string, poo
 		changed[component.Name] = installed[component.Name] != expected[component.Name]
 	}
 
-	affected := make([]ComponentAction, 0, len(components))
+	actions := make([]ComponentAction, 0, len(components))
+	affected := make(map[string]bool, len(components))
 	for _, component := range components {
-		if !changed[component.Name] && !slices.ContainsFunc(component.DependsOn, func(dependency string) bool { return changed[dependency] }) {
+		if !changed[component.Name] && !slices.ContainsFunc(component.DependsOn, func(dependency string) bool { return affected[dependency] }) {
 			slog.Info("Component already installed", slog.String("component", component.Name), slog.String("version", installed[component.Name]))
 			continue
 		}
+		affected[component.Name] = true
 
 		action := ComponentAction{
 			Name:             component.Name,
@@ -50,10 +53,10 @@ func affectedComponents(components []Component, installed map[string]string, poo
 		} else if changed[component.Name] {
 			action.Reason = "version changed"
 		}
-		affected = append(affected, action)
+		actions = append(actions, action)
 	}
 
-	return affected
+	return actions
 }
 
 // planComponents fills the uninstall and install recipes of the given actions
