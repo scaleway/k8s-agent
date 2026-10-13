@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"io/fs"
+	"log/slog"
 	"slices"
 )
 
@@ -29,11 +30,16 @@ func affectedComponents(components []Component, installed map[string]string, poo
 		changed[component.Name] = installed[component.Name] != expandVersion(component.Version, poolVersion)
 	}
 
-	return slices.DeleteFunc(slices.Clone(components), func(component Component) bool {
-		return !changed[component.Name] && !slices.ContainsFunc(component.DependsOn, func(dependency string) bool {
-			return changed[dependency]
-		})
-	})
+	affected := make([]Component, 0, len(components))
+	for _, component := range components {
+		if !changed[component.Name] && !slices.ContainsFunc(component.DependsOn, func(dependency string) bool { return changed[dependency] }) {
+			slog.Info("Component already installed", slog.String("component", component.Name), slog.String("version", installed[component.Name]))
+			continue
+		}
+		affected = append(affected, component)
+	}
+
+	return affected
 }
 
 // planComponents resolves every uninstall and install to be performed for the given components and returns them in install order
