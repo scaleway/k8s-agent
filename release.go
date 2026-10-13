@@ -65,8 +65,7 @@ func releaseComponents(repoFS fs.FS, nodemetadata NodeMetadata) ([]Component, er
 	return filteredComponents, nil
 }
 
-// sortDependencies orders components so that each one comes after its dependencies, keeping the release order otherwise.
-// It fails if a component is defined twice, depends on an unknown component or is part of a dependency cycle.
+// sortDependencies orders components after their dependencies, keeping release order otherwise
 func sortDependencies(components []Component) ([]Component, error) {
 	names := make(map[string]bool, len(components))
 	for _, component := range components {

@@ -20,14 +20,12 @@ type ComponentAction struct {
 // uninstalledVersion is the version stored for a component once uninstalled
 const uninstalledVersion = "uninstalled"
 
-// isInstalled returns true if the given installed version must be uninstalled before a reinstall
+// isInstalled returns true if the component must be uninstalled before a reinstall
 func isInstalled(installedVersion string) bool {
 	return installedVersion != "" && installedVersion != uninstalledVersion
 }
 
-// affectedComponents returns in install order an action, without recipes, for components whose installed version differs from the expected one
-// and every component depending on them, directly or through another affected component.
-// Components must be in install order, as sorted by releaseComponents.
+// affectedComponents returns the outdated components and their dependents, in install order
 func affectedComponents(components []Component, installed map[string]string, poolVersion string) []ComponentAction {
 	actions := make([]ComponentAction, 0, len(components))
 	affected := make(map[string]bool, len(components))
